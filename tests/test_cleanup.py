@@ -465,3 +465,17 @@ def test_delete_tree_does_not_follow_a_nested_junction(
     delete_tree(tmp_path / "workshop")
     assert not (tmp_path / "workshop").exists()  # our tree is gone
     assert (victim / "kernel.dll").exists()  # the junction target is not
+
+
+@windows_only
+def test_delete_tree_clears_a_read_only_file(tmp_path: pathlib.Path) -> None:
+    """Steam marks some game files read-only; like -Force, they must go."""
+    import os
+    import stat as _stat
+    from pudge_gaming_manager.utilities.secure_delete import delete_tree
+
+    tree = tmp_path / "game"
+    _write(tree / "locked.bin", "data")
+    os.chmod(tree / "locked.bin", _stat.S_IREAD)
+    delete_tree(tree)
+    assert not tree.exists()

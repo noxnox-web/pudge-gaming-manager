@@ -302,6 +302,7 @@ been executed in their target environment:
 |---|---|
 | `ARCHITECTURE.md` | Layering, change lifecycle, rollback, privilege and security model |
 | `README.md` | This file |
+| `LICENSE` | MIT |
 
 Planned: `SECURITY.md`, `TWEAKS.md`, `PROFILE_SCHEMA.md`, `DEVELOPMENT.md`,
 `CHANGELOG.md`.
@@ -314,3 +315,13 @@ PGM does not collect personal documents, file contents, passwords, cookies,
 messages or game credentials. It stores no secret of any kind, which is the
 cheapest way to never leak one. All data stays in
 `%ProgramData%\PudgeGamingManager\`. The folder keeps its original name after the rename to Pudge Cleaner: moving it would orphan the database, backups and audit log on every machine already running it.
+
+---
+
+## License
+
+MIT — see [`LICENSE`](LICENSE). Use it, change it, ship it; keep the copyright
+notice, and understand that it comes with no warranty. That last part is not
+boilerplate here: this program deletes files and changes Windows settings on
+machines it does not own. Read what a button does before you press it on
+someone else's PC.

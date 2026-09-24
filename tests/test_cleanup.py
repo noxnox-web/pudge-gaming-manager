@@ -1,0 +1,467 @@
+"""Tests for the cleanup engine.
+
+Every test runs against a throwaway directory tree built by the fixtures.
+Nothing here points at a real system path (rule #48) — the engine's whole
+job is deleting files, so it is exactly the component that must never be
+tested against the live machine.
+"""
+
+from __future__ import annotations
+
+import os
+import pathlib
+import time
+
+import pytest
+
+from pudge_gaming_manager.windows.cleanup.engine import CleanupEngine
+from pudge_gaming_manager.utilities.formatting import format_size
+from pudge_gaming_manager.windows.cleanup.rules import (
+    CATEGORIES,
+    CleanupCategory,
+    CleanupRisk,
+    default_categories,
+)
+
+windows_only = pytest.mark.skipif(os.name != "nt", reason="Windows-only behaviour")
+
+
+def _category(root: pathlib.Path, **kwargs) -> CleanupCategory:
+    """A category pointed at a test directory via a temporary env var."""
+    os.environ["PGM_TEST_ROOT"] = str(root)
+    defaults = {
+        "id": "test.category",
+        "name": "Test category",
+        "description": "Temporary files created by the test suite.",
+        "rationale": "Exists only inside a pytest temporary directory.",
+        "roots": ("%PGM_TEST_ROOT%",),
+        "min_age_hours": 0.0,
+        "risk": CleanupRisk.SAFE,
+    }
+    defaults.update(kwargs)
+    return CleanupCategory(**defaults)  # type: ignore[arg-type]
+
+
+def _write(path: pathlib.Path, content: str = "x" * 100, age_hours: float = 0.0):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    if age_hours:
+        old = time.time() - age_hours * 3600
+        os.utime(path, (old, old))
+    return path
+
+
+# -- scanning --------------------------------------------------------------
+
+
+def test_scan_finds_files_and_totals_their_size(tmp_path: pathlib.Path) -> None:
+    _write(tmp_path / "a.tmp", "x" * 100)
+    _write(tmp_path / "b.tmp", "x" * 200)
+
+    report = CleanupEngine((_category(tmp_path),)).scan()
+
+    assert report.total_files == 2
+    assert report.total_bytes == 300
+
+
+def test_scan_mutates_nothing(tmp_path: pathlib.Path) -> None:
+    target = _write(tmp_path / "a.tmp")
+    CleanupEngine((_category(tmp_path),)).scan()
+    assert target.exists()
+
+
+def test_scan_recurses_by_default(tmp_path: pathlib.Path) -> None:
+    _write(tmp_path / "deep" / "nested" / "a.tmp")
+    report = CleanupEngine((_category(tmp_path),)).scan()
+    assert report.total_files == 1
+
+
+def test_non_recursive_category_stays_shallow(tmp_path: pathlib.Path) -> None:
+    _write(tmp_path / "top.tmp")
+    _write(tmp_path / "deep" / "nested.tmp")
+
+    category = _category(tmp_path, recursive=False)
+    report = CleanupEngine((category,)).scan()
+
+    assert report.total_files == 1
+
+
+def test_patterns_restrict_what_is_matched(tmp_path: pathlib.Path) -> None:
+    _write(tmp_path / "keep.txt")
+    _write(tmp_path / "drop.log")
+
+    category = _category(tmp_path, patterns=("*.log",))
+    report = CleanupEngine((category,)).scan()
+
+    assert report.total_files == 1
+    assert report.categories[0].items[0].path.name == "drop.log"
+
+
+def test_missing_root_is_reported_not_crashed(tmp_path: pathlib.Path) -> None:
+    category = _category(tmp_path / "does-not-exist")
+    report = CleanupEngine((category,)).scan()
+
+    assert not report.categories[0].available
+    assert "not present" in report.categories[0].unavailable_reason
+
+
+# -- age gate --------------------------------------------------------------
+
+
+def test_files_younger_than_the_threshold_are_skipped(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A file written seconds ago is probably open right now."""
+    _write(tmp_path / "fresh.tmp", age_hours=0.0)
+    _write(tmp_path / "stale.tmp", age_hours=48.0)
+
+    category = _category(tmp_path, min_age_hours=24.0)
+    report = CleanupEngine((category,)).scan()
+
+    assert report.total_files == 1
+    assert report.categories[0].items[0].path.name == "stale.tmp"
+    assert report.categories[0].skipped_too_new == 1
+
+
+# -- protection ------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "fragment", ["SmartShell", "steamapps", "Documents", "EasyAntiCheat", "Vanguard"]
+)
+def test_protected_directories_are_never_collected(
+    tmp_path: pathlib.Path, fragment: str
+) -> None:
+    _write(tmp_path / fragment / "important.tmp")
+    _write(tmp_path / "ordinary" / "junk.tmp")
+
+    report = CleanupEngine((_category(tmp_path),)).scan()
+
+    collected = [i.path.name for i in report.categories[0].items]
+    assert collected == ["junk.tmp"]
+
+
+@pytest.mark.parametrize("extension", [".sav", ".docx", ".kdbx", ".exe", ".pem"])
+def test_protected_extensions_are_never_collected(
+    tmp_path: pathlib.Path, extension: str
+) -> None:
+    _write(tmp_path / f"precious{extension}")
+    _write(tmp_path / "junk.tmp")
+
+    report = CleanupEngine((_category(tmp_path),)).scan()
+
+    assert [i.path.name for i in report.categories[0].items] == ["junk.tmp"]
+
+
+def test_admin_only_category_is_skipped_without_elevation(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import pudge_gaming_manager.windows.cleanup.engine as mod
+
+    monkeypatch.setattr(mod, "is_admin", lambda: False)
+    _write(tmp_path / "a.tmp")
+
+    category = _category(tmp_path, requires_admin=True)
+    report = CleanupEngine((category,)).scan()
+
+    assert not report.categories[0].available
+    assert "administrator" in report.categories[0].unavailable_reason
+
+
+# -- containment (the junction-escape defence) ----------------------------
+
+
+@windows_only
+def test_directory_link_is_not_followed_out_of_the_root(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A link inside Temp must not let the cleaner enumerate elsewhere."""
+    sandbox = tmp_path / "sandbox"
+    outside = tmp_path / "outside"
+    sandbox.mkdir()
+    _write(outside / "precious.tmp")
+
+    try:
+        (sandbox / "escape").symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("cannot create a directory symlink in this environment")
+
+    report = CleanupEngine((_category(sandbox),)).scan()
+
+    collected = [str(i.path) for i in report.categories[0].items]
+    assert not any("precious" in c for c in collected), collected
+    assert (outside / "precious.tmp").exists()
+
+
+def test_containment_check_rejects_paths_outside_the_root(
+    tmp_path: pathlib.Path,
+) -> None:
+    engine = CleanupEngine(())
+    inside = tmp_path / "root" / "file.tmp"
+    _write(inside)
+
+    assert engine._contained(inside, tmp_path / "root")
+    assert not engine._contained(inside, tmp_path / "elsewhere")
+
+
+# -- deletion --------------------------------------------------------------
+
+
+def test_dry_run_deletes_nothing_but_reports_the_total(
+    tmp_path: pathlib.Path,
+) -> None:
+    target = _write(tmp_path / "a.tmp", "x" * 500)
+
+    engine = CleanupEngine((_category(tmp_path),))
+    result = engine.clean(engine.scan(), dry_run=True)
+
+    assert target.exists()
+    assert result.deleted_files == 1
+    assert result.deleted_bytes == 500
+
+
+def test_clean_removes_approved_files(tmp_path: pathlib.Path) -> None:
+    first = _write(tmp_path / "a.tmp")
+    second = _write(tmp_path / "sub" / "b.tmp")
+
+    engine = CleanupEngine((_category(tmp_path),))
+    result = engine.clean(engine.scan())
+
+    assert not first.exists()
+    assert not second.exists()
+    assert result.deleted_files == 2
+    assert result.failed_files == 0
+
+
+def test_clean_never_removes_the_root_itself(tmp_path: pathlib.Path) -> None:
+    _write(tmp_path / "a.tmp")
+
+    engine = CleanupEngine((_category(tmp_path),))
+    engine.clean(engine.scan())
+
+    assert tmp_path.is_dir()
+
+
+def test_empty_subdirectories_are_removed(tmp_path: pathlib.Path) -> None:
+    _write(tmp_path / "sub" / "a.tmp")
+
+    engine = CleanupEngine((_category(tmp_path),))
+    engine.clean(engine.scan())
+
+    assert not (tmp_path / "sub").exists()
+    assert tmp_path.is_dir()
+
+
+def test_protected_file_survives_a_clean(tmp_path: pathlib.Path) -> None:
+    save = _write(tmp_path / "game.sav")
+    junk = _write(tmp_path / "junk.tmp")
+
+    engine = CleanupEngine((_category(tmp_path),))
+    engine.clean(engine.scan())
+
+    assert save.exists(), "a protected file was deleted"
+    assert not junk.exists()
+
+
+def test_deletion_revalidates_and_refuses_a_changed_file(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A stale inventory is not permission to delete.
+
+    The file is rewritten after the scan, which under an age gate means
+    something is using it now.
+    """
+    target = _write(tmp_path / "a.tmp", age_hours=48.0)
+
+    category = _category(tmp_path, min_age_hours=24.0)
+    engine = CleanupEngine((category,))
+    report = engine.scan()
+    assert report.total_files == 1
+
+    # Something touches the file between scan and clean.
+    target.write_text("in use now", encoding="utf-8")
+
+    result = engine.clean(report)
+
+    assert target.exists()
+    assert result.refused_files == 1
+    assert result.deleted_files == 0
+
+
+def test_locked_file_is_counted_not_crashed(tmp_path: pathlib.Path) -> None:
+    target = _write(tmp_path / "locked.tmp")
+    engine = CleanupEngine((_category(tmp_path),))
+    report = engine.scan()
+
+    handle = open(target, "r+", encoding="utf-8")
+    try:
+        result = engine.clean(report)
+    finally:
+        handle.close()
+
+    if os.name == "nt":
+        # Windows refuses to unlink an open file; that must be survivable.
+        assert result.failed_files == 1
+        assert target.exists()
+    else:
+        assert result.deleted_files == 1
+
+
+# -- the shipped rules -----------------------------------------------------
+
+
+def test_every_shipped_category_explains_itself() -> None:
+    """Same standard as a tweak: no unexplained deletion (rule #64)."""
+    for category in CATEGORIES:
+        assert category.rationale, f"{category.id} has no rationale"
+        assert category.description, f"{category.id} has no description"
+        assert category.roots, f"{category.id} has no root"
+
+
+def test_browser_categories_are_off_by_default() -> None:
+    """Clearing browser data can sign a player out mid-session."""
+    enabled = {c.id for c in default_categories()}
+    assert "cache.browser.chrome" not in enabled
+    assert "cache.browser.edge" not in enabled
+
+
+def test_browser_rules_exclude_cookies_and_logins() -> None:
+    """Rule #46: say exactly what browser data is removed, and remove only that."""
+    browser = [c for c in CATEGORIES if c.id.startswith("cache.browser.")]
+    assert browser
+    for category in browser:
+        joined = " ".join(category.roots).lower()
+        for forbidden in ("cookies", "login data", "history", "web data"):
+            assert forbidden not in joined, f"{category.id} touches {forbidden}"
+
+
+def test_no_shipped_category_points_at_a_protected_root() -> None:
+    engine = CleanupEngine(())
+    for category in CATEGORIES:
+        for root in category.roots:
+            expanded = pathlib.Path(os.path.expandvars(root))
+            if "%" in str(expanded):
+                continue
+            assert not engine.is_protected(expanded), f"{category.id} -> {expanded}"
+
+
+# -- formatting ------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(0, "0 B"), (512, "512 B"), (2048, "2.0 KB"), (5 * 1024**3, "5.0 GB")],
+)
+def test_size_formatting(value: int, expected: str) -> None:
+    assert format_size(value) == expected
+
+
+# -- delete by object, not by name (the TOCTOU defence) --------------------
+
+
+@windows_only
+def test_delete_file_removes_a_real_file_and_returns_its_size(
+    tmp_path: pathlib.Path,
+) -> None:
+    from pudge_gaming_manager.utilities.secure_delete import delete_file
+
+    target = _write(tmp_path / "a.tmp", "x" * 321)
+    assert delete_file(target) == 321
+    assert not target.exists()
+
+
+@windows_only
+def test_delete_file_refuses_a_directory(tmp_path: pathlib.Path) -> None:
+    from pudge_gaming_manager.utilities.secure_delete import (
+        DeleteError,
+        delete_file,
+    )
+
+    folder = tmp_path / "sub"
+    folder.mkdir()
+    with pytest.raises(DeleteError):
+        delete_file(folder)
+    assert folder.is_dir()
+
+
+@windows_only
+def test_delete_file_refuses_a_junction_swapped_in_after_the_scan(
+    tmp_path: pathlib.Path,
+) -> None:
+    """The core attack: a file the scan approved becomes a junction to a
+    protected tree before deletion. Deleting by name would follow it; the
+    handle-based delete opens the reparse point as itself and refuses."""
+    from pudge_gaming_manager.utilities.secure_delete import (
+        DeleteError,
+        delete_file,
+    )
+
+    victim = tmp_path / "system"
+    _write(victim / "kernel.tmp")
+    swapped = tmp_path / "a.tmp"
+    # Replace the approved file's *name* with a junction to another tree,
+    # exactly as an attacker would between scan and clean.
+    import subprocess
+
+    subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(swapped), str(victim)],
+        check=True, capture_output=True,
+    )
+    with pytest.raises(DeleteError):
+        delete_file(swapped)
+    assert (victim / "kernel.tmp").exists()
+
+
+@windows_only
+def test_clean_refuses_a_file_replaced_by_a_junction(
+    tmp_path: pathlib.Path,
+) -> None:
+    """End to end: scan lists a file, an attacker swaps it for a junction to
+    a protected tree, clean must reclaim nothing from behind the junction."""
+    import subprocess
+
+    sandbox = tmp_path / "temp"
+    sandbox.mkdir()
+    protected = tmp_path / "windows"
+    _write(protected / "important.tmp")
+    approved = _write(sandbox / "a.tmp")
+
+    engine = CleanupEngine((_category(sandbox),))
+    report = engine.scan()
+    assert report.total_files == 1
+
+    approved.unlink()
+    subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(approved), str(protected)],
+        check=True, capture_output=True,
+    )
+
+    result = engine.clean(report)
+    assert result.deleted_files == 0
+    assert result.refused_files == 1
+    assert (protected / "important.tmp").exists()
+
+
+@windows_only
+def test_delete_tree_does_not_follow_a_nested_junction(
+    tmp_path: pathlib.Path,
+) -> None:
+    """os.walk(followlinks=False) still descends into NTFS junctions; the
+    hand-written walk must not, or a junction planted inside a tree would
+    let an elevated delete destroy its target's contents."""
+    from pudge_gaming_manager.utilities.secure_delete import delete_tree
+    import subprocess
+
+    victim = tmp_path / "system"
+    _write(victim / "kernel.dll")
+    tree = tmp_path / "workshop" / "content"
+    tree.mkdir(parents=True)
+    _write(tree / "real.dat")
+    subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(tree / "planted"), str(victim)],
+        check=True, capture_output=True,
+    )
+
+    delete_tree(tmp_path / "workshop")
+    assert not (tmp_path / "workshop").exists()  # our tree is gone
+    assert (victim / "kernel.dll").exists()  # the junction target is not

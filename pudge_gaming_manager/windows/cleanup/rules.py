@@ -201,6 +201,23 @@ PROTECTED_PATH_FRAGMENTS: tuple[str, ...] = (
     "vault",
 )
 
+#: Separators that may follow a fragment for it to still count as that
+#: directory: ``OneDrive - Contoso`` and ``SmartShell Client`` are matched,
+#: ``my-documents-backup`` is not.
+FRAGMENT_SEPARATORS = (" ", "-", "_", ".")
+
+#: The fragment list precomputed into the two shapes the matcher needs, once
+#: at import rather than per path component per file. The old matcher built
+#: every fragment-plus-separator string inside its inner loop — 180 string
+#: builds per component — and that was a measurable share of the delete gate.
+PROTECTED_EXACT: frozenset[str] = frozenset(PROTECTED_PATH_FRAGMENTS)
+PROTECTED_PREFIXES: tuple[str, ...] = tuple(
+    fragment + separator
+    for fragment in PROTECTED_PATH_FRAGMENTS
+    for separator in FRAGMENT_SEPARATORS
+)
+
+
 #: Whole directories that must never be recursed into, by absolute path.
 PROTECTED_ROOTS: tuple[str, ...] = (
     "%SystemRoot%\\System32",
@@ -234,6 +251,77 @@ PROTECTED_EXTENSIONS: frozenset[str] = CREDENTIAL_EXTENSIONS | frozenset(
 )
 
 
+def component_is_protected(
+    component: str, allowed: frozenset[str] = frozenset()
+) -> bool:
+    """Match one path component against the protected-name list.
+
+    A component counts as protected when it equals a fragment, or begins
+    with it followed by a separator — so ``OneDrive - Contoso`` and
+    ``SmartShell Client`` are caught, while ``my-documents-backup`` is not
+    mistaken for ``Documents``.
+
+    Lives here rather than in the engine because it is a property of the
+    fragment list above, and because the engine calls it for every component
+    of every candidate path: it belongs next to the tables it reads.
+
+    Args:
+        allowed: Fragments the owning category waived. A component matching
+            one of those passes; every other fragment still applies, so a
+            category that waives "battle.net" gains nothing towards
+            "steamapps".
+    """
+    lowered = component.lower()
+    if not allowed:
+        # The common path: two C-level lookups against tables built once at
+        # import, rather than rebuilding every fragment-plus-separator
+        # string for every component of every file's path.
+        return lowered in PROTECTED_EXACT or lowered.startswith(PROTECTED_PREFIXES)
+
+    # A category waived something, so the tables have to be filtered. Rare
+    # enough — two shipped categories — to be worth no further machinery.
+    for fragment in PROTECTED_PATH_FRAGMENTS:
+        if fragment in allowed:
+            continue
+        if lowered == fragment:
+            return True
+        for separator in FRAGMENT_SEPARATORS:
+            if lowered.startswith(fragment + separator):
+                return True
+    return False
+
+
+def within(candidate: pathlib.Path, root: pathlib.Path) -> bool:
+    r"""True when ``candidate`` is ``root`` or sits underneath it.
+
+    Path arithmetic only — neither side is resolved here, so callers that
+    need containment to survive a junction must resolve first and pass the
+    resolved paths in.
+
+    Deliberately not ``pathlib.Path.is_relative_to``. On this Python that
+    method is implemented as ``root == self or root in self.parents``, and
+    ``_PathParents`` has no ``__contains__`` of its own, so the ``in`` falls
+    back to a linear scan that *constructs a new Path object for every
+    ancestor* and compares it. Measured at 15 us per call against 0.6 us for
+    the comparison below — and the cleaner makes several of these per file,
+    which made it the single largest cost in a scan of 17 000 files.
+
+    ``normcase`` is what makes the string comparison correct on Windows:
+    it folds case and normalises separators, so ``C:/Temp/x`` and
+    ``c:\temp\x`` compare equal, as the filesystem treats them.
+    """
+    try:
+        candidate_s = os.path.normcase(str(candidate))
+        root_s = os.path.normcase(str(root))
+    except (OSError, ValueError):
+        return False
+    if candidate_s == root_s:
+        return True
+    if not root_s.endswith(os.sep):
+        root_s += os.sep
+    return candidate_s.startswith(root_s)
+
+
 def protected_roots() -> list[pathlib.Path]:
     """Resolved protected directories present on this machine."""
     resolved: list[pathlib.Path] = []
@@ -263,11 +351,16 @@ __all__ = [
     "CleanupRisk",
     "MAX_ROOT_MATCHES",
     "MIN_FIXED_COMPONENTS",
+    "FRAGMENT_SEPARATORS",
+    "PROTECTED_EXACT",
     "PROTECTED_EXTENSIONS",
     "PROTECTED_PATH_FRAGMENTS",
+    "PROTECTED_PREFIXES",
     "PROTECTED_ROOTS",
+    "component_is_protected",
     "protected_extensions",
     "protected_roots",
     "resolve_roots",
+    "within",
     "waived_fragments",
 ]

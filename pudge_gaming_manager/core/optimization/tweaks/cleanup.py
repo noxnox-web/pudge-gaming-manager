@@ -15,6 +15,7 @@ deletion time.
 
 from __future__ import annotations
 
+from ....utilities.disk_space import FreeSpaceDelta, drive_of
 from ....utilities.logging_setup import get_logger
 from ....windows.cleanup.engine import CleanupEngine
 from ....utilities.formatting import format_size
@@ -74,6 +75,7 @@ class CleanTemporaryFilesTweak(Tweak):
         self._engine = engine or CleanupEngine(self.categories)
         self._report = None
         self._reclaimed = 0
+        self._space = FreeSpaceDelta()
 
         # Inherit the highest risk among the selected categories, so a
         # selection including browser caches is gated accordingly.
@@ -131,8 +133,16 @@ class CleanTemporaryFilesTweak(Tweak):
         if self._report is None:
             return ApplyResult(Outcome.FAILED, "Очистка не сканировалась.")
 
+        # Bracket the deletion with a free-space reading so verification has
+        # a measurement to check instead of having to walk the tree again.
+        if not ctx.dry_run:
+            self._space.measure_before(self._drives())
+
         result = self._engine.clean(self._report, dry_run=ctx.dry_run)
         self._reclaimed = result.deleted_bytes
+
+        if not ctx.dry_run:
+            self._space.measure_after()
 
         detail = (
             f"Удалено {result.size_display} в {result.deleted_files} файлах."
@@ -144,28 +154,54 @@ class CleanTemporaryFilesTweak(Tweak):
         return ApplyResult(Outcome.SUCCESS, detail)
 
     def verify(self, ctx: TweakContext, state: TweakState) -> Verification:
-        """Confirm by rescanning: the remaining total must have dropped.
+        """Confirm from the drives' free space, not from a second full scan.
+
+        This used to re-walk every category to prove the totals had gone
+        down — the same tens of thousands of files the scan had just
+        counted, for a second time, while the operator watched a progress
+        bar. Reading free space costs microseconds and answers a better
+        question: the scan total is what the cleaner *believes* it removed,
+        whereas free space is what the drive actually gave back.
 
         Files held open by a running process legitimately survive, so this
-        checks that space was actually reclaimed rather than demanding the
-        categories be empty.
+        checks that space came back, not that the categories are empty.
         """
         if self._report is None:
             return Verification.deny(None, "Очистка не сканировалась.")
 
-        after = self._engine.scan()
-        before = int(state.current_value or 0)
-        if after.total_bytes < before or self._reclaimed > 0:
+        reclaimed = self._space.freed_bytes if self._space.measured else None
+        if reclaimed is not None and reclaimed > 0:
             return Verification.confirm(
-                after.total_bytes,
-                f"Освобождено {format_size(before - after.total_bytes)}; "
-                f"{after.size_display} осталось в занятых файлах.",
+                reclaimed,
+                f"На диске освободилось {format_size(reclaimed)} "
+                f"(удалено {format_size(self._reclaimed)}).",
+            )
+        if self._reclaimed > 0:
+            # Files went, but the drive did not grow: a shadow copy or a
+            # restore point still references them, or something else wrote
+            # during the run. Say so rather than claiming either number.
+            return Verification.confirm(
+                reclaimed if reclaimed is not None else self._reclaimed,
+                f"Удалено {format_size(self._reclaimed)}, но свободное место "
+                "не выросло — вероятно, файлы удерживают теневые копии или "
+                "точки восстановления.",
             )
         return Verification.deny(
-            after.total_bytes,
+            reclaimed,
             "Место не освобождено; все файлы были заняты или изменились "
             "во время операции.",
         )
+
+    def _drives(self) -> set[str]:
+        """Volume roots this cleanup will delete from."""
+        if self._report is None:
+            return set()
+        return {
+            anchor
+            for category_report in self._report.categories
+            for root in category_report.roots_scanned
+            if (anchor := drive_of(root))
+        }
 
     def rollback(self, ctx: TweakContext, backup: BackupRecord) -> ApplyResult:
         # Unreachable: with BackupScope.NONE the engine never creates a

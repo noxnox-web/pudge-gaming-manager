@@ -22,8 +22,7 @@ from __future__ import annotations
 import os
 import pathlib
 import time
-from fnmatch import fnmatch
-from typing import Iterator
+from concurrent.futures import ThreadPoolExecutor
 
 from ...utilities.logging_setup import audit_event, get_logger
 from ...utilities.privileges import is_admin
@@ -33,11 +32,12 @@ from .report import (
     CleanupItem,
     ScanReport,
 )
-from ...utilities.secure_delete import DeleteError, delete_file
+from . import deletion, walk
 from .categories import default_categories
 from .rules import (
-    PROTECTED_PATH_FRAGMENTS,
     CleanupCategory,
+    component_is_protected,
+    within,
     protected_extensions,
     protected_roots,
     resolve_roots,
@@ -45,6 +45,13 @@ from .rules import (
 )
 
 _log = get_logger(__name__)
+
+#: Threads used to walk the categories. Like deletion, a directory walk is
+#: kernel-bound: the thread is blocked inside ``scandir`` and not holding
+#: the GIL. Eight covers the shipped catalogue's twenty categories well —
+#: only a few of them (Temp, the browser caches) are large enough to matter,
+#: and the rest finish immediately.
+SCAN_WORKERS = 8
 
 
 class CleanupEngine:
@@ -82,7 +89,7 @@ class CleanupEngine:
                 cache folders sitting under a protected vendor name.
         """
         if any(
-            _component_is_protected(part, allowed_fragments) for part in path.parts
+            component_is_protected(part, allowed_fragments) for part in path.parts
         ):
             return True
         if path.suffix.lower() in protected_extensions(
@@ -90,11 +97,8 @@ class CleanupEngine:
         ):
             return True
         for root in self._protected_roots:
-            try:
-                if path.is_relative_to(root):
-                    return True
-            except (OSError, ValueError):
-                return True  # cannot prove it is safe, so refuse
+            if within(path, root):
+                return True
         return False
 
     @staticmethod
@@ -107,11 +111,11 @@ class CleanupEngine:
         deletion always uses it, where correctness beats speed.
         """
         try:
-            return candidate.resolve(strict=False).is_relative_to(
-                root.resolve(strict=False)
-            )
+            resolved_candidate = candidate.resolve(strict=False)
+            resolved_root = root.resolve(strict=False)
         except (OSError, ValueError, RuntimeError):
             return False
+        return within(resolved_candidate, resolved_root)
 
     @staticmethod
     def _contained_lexically(candidate: pathlib.Path, root: pathlib.Path) -> bool:
@@ -121,10 +125,7 @@ class CleanupEngine:
         descends into a link, so no component between ``root`` and
         ``candidate`` can redirect elsewhere.
         """
-        try:
-            return candidate.is_relative_to(root)
-        except (OSError, ValueError):
-            return False
+        return within(candidate, root)
 
     def _approves(
         self,
@@ -172,13 +173,31 @@ class CleanupEngine:
     # -- scan --------------------------------------------------------------
 
     def scan(self) -> ScanReport:
-        """Inventory every enabled category. Mutates nothing."""
+        """Inventory every enabled category. Mutates nothing.
+
+        The categories are walked in parallel. They address disjoint
+        directory trees, the walk only reads, and each one spends its time
+        blocked in ``scandir`` rather than holding the GIL — so twenty
+        categories that took twenty turns now take about as long as the
+        slowest few. ``pool.map`` preserves order, so the report still
+        lists them in catalogue order.
+        """
         started = time.monotonic()
         report = ScanReport()
         now = time.time()
 
-        for category in self.categories:
-            report.categories.append(self._scan_category(category, now))
+        if len(self.categories) < 2:
+            report.categories = [
+                self._scan_category(category, now) for category in self.categories
+            ]
+        else:
+            with ThreadPoolExecutor(
+                max_workers=min(len(self.categories), SCAN_WORKERS),
+                thread_name_prefix="pgm-scan",
+            ) as pool:
+                report.categories = list(
+                    pool.map(lambda c: self._scan_category(c, now), self.categories)
+                )
 
         report.duration_s = time.monotonic() - started
         _log.info(
@@ -207,7 +226,7 @@ class CleanupEngine:
         result.roots_scanned = roots
         for root in roots:
             resolved_root = _resolve(root)
-            for path, stat, is_link in self._candidates(root, category):
+            for path, stat, is_link in walk.candidates(root, category):
                 # Containment only needs the expensive resolve() when the
                 # entry is itself a link. Everything else came from a walk
                 # that already pruned links, so a lexical check is sound —
@@ -236,61 +255,6 @@ class CleanupEngine:
                     result.unreadable += 1
         return result
 
-    def _candidates(
-        self, root: pathlib.Path, category: CleanupCategory
-    ) -> Iterator[tuple[pathlib.Path, os.stat_result, bool]]:
-        """Yield ``(path, stat, is_link)`` for files matching the category.
-
-        Built on ``os.scandir``, which returns directory entries with their
-        metadata already cached by the OS — one syscall per entry instead of
-        a separate ``stat`` per candidate. On a Temp folder with 50 000
-        files that is the difference between a scan taking a minute and a
-        few seconds.
-
-        Directory links are never descended into: a junction in Temp
-        pointing at a profile folder would otherwise enumerate that folder's
-        contents as deletable.
-        """
-        patterns = category.patterns
-        # The walk prunes protected directory names as it goes, so it must
-        # honour the same waiver the approval gate does. Otherwise a
-        # category rooted inside a waived vendor folder would descend into
-        # nothing and silently report itself empty.
-        allowed = waived_fragments(category)
-        stack: list[pathlib.Path] = [root]
-
-        while stack:
-            current = stack.pop()
-            try:
-                with os.scandir(current) as entries:
-                    for entry in entries:
-                        try:
-                            is_link = entry.is_symlink() or _entry_is_junction(entry)
-                            if entry.is_dir(follow_symlinks=False):
-                                if (
-                                    category.recursive
-                                    and not is_link
-                                    and not _component_is_protected(
-                                        entry.name, allowed
-                                    )
-                                ):
-                                    stack.append(pathlib.Path(entry.path))
-                                continue
-                            if not _matches(entry.name, patterns):
-                                continue
-                            yield (
-                                pathlib.Path(entry.path),
-                                entry.stat(follow_symlinks=False),
-                                is_link,
-                            )
-                        except OSError:
-                            continue
-            except OSError as exc:
-                _log.debug("cannot enumerate %s: %s", current, exc)
-
-            if not category.recursive:
-                break
-
     # -- clean -------------------------------------------------------------
 
     def clean(
@@ -301,6 +265,12 @@ class CleanupEngine:
         Every item is re-validated against the same gate the scan used. The
         filesystem can change between scan and clean, and a stale inventory
         must never become permission to delete something.
+
+        Validation and deletion are separated: the whole category is
+        re-validated first, then the approved items are deleted, in
+        parallel when there are enough of them to be worth it. Keeping the
+        two apart is what lets the deletions overlap without any safety
+        check running off the main thread.
         """
         result = CleanResult()
         now = time.time()
@@ -311,55 +281,59 @@ class CleanupEngine:
             category = category_report.category
             roots = category_report.roots_scanned
 
+            # Resolve each root once for the whole category instead of once
+            # per file per root. resolve() is a filesystem round-trip (~77 us
+            # here) and it dominated the delete phase: with three roots the
+            # old code paid for it up to eight times per file, which is most
+            # of the second the validation took per two thousand files.
+            #
+            # The roots are directories the rules name and do not move during
+            # a run, and pinning them is the safe direction anyway: if one
+            # were swapped for a junction mid-run, its files would resolve
+            # somewhere else and fail containment against the root captured
+            # here, so they would be refused rather than followed.
+            resolved_roots = [_resolve(root) for root in roots]
+
+            # Resolving a path costs a filesystem round-trip, and every file
+            # in a directory shares that directory's answer. One resolve per
+            # *parent* instead of per file is the difference between 20 000
+            # round-trips and 200 on a typical Temp folder.
+            #
+            # It is also sufficient. The attack this defends against is an
+            # intermediate directory becoming a junction between the scan and
+            # the delete, which this still catches: the parent resolves
+            # outside the root and every file under it is refused. The other
+            # half — the file itself being swapped for a link — is caught at
+            # the moment of deletion, where the handle is opened without
+            # following reparse points and a link is rejected outright.
+            # parent -> (resolved parent, is any ancestor component
+            # protected). Both answers are the same for every file in a
+            # directory, and both were being recomputed per file: the
+            # protection check walks every component of the path, which for
+            # a browser cache is eleven of them against a 180-entry table.
+            parents: dict[pathlib.Path, tuple[pathlib.Path, bool]] = {}
+
+            approved: list[CleanupItem] = []
             for item in category_report.items:
-                owning_root = next(
-                    (r for r in roots if self._contained(item.path, r)), None
+                ok, reason = self._approves_for_delete(
+                    item.path, resolved_roots, parents, category, now
                 )
-                if owning_root is None:
-                    result.refused_files += 1
+                if ok:
+                    approved.append(item)
                     continue
+                # "too new" here means the file was rewritten since the
+                # scan, i.e. something is using it. Correct to refuse.
+                result.refused_files += 1
+                _log.debug("refused %s at delete time: %s", item.path, reason)
 
-                approved, reason = self._approves(
-                    item.path, owning_root, category, now
-                )
-                if not approved:
-                    # "too new" here means the file was rewritten since the
-                    # scan, i.e. something is using it. Correct to refuse.
-                    result.refused_files += 1
-                    _log.debug("refused %s at delete time: %s", item.path, reason)
-                    continue
+            if dry_run:
+                result.deleted_files += len(approved)
+                result.deleted_bytes += sum(i.size_bytes for i in approved)
+                continue
 
-                if dry_run:
-                    result.deleted_files += 1
-                    result.deleted_bytes += item.size_bytes
-                    continue
+            deletion.run(approved, result)
 
-                try:
-                    # Delete by the object, not the name: the path passed
-                    # every check above, but an elevated unlink-by-name could
-                    # still be redirected by a junction swapped in just now
-                    # (see secure_delete). This opens the object once and
-                    # deletes that, so the name can no longer be diverted.
-                    result.deleted_bytes += delete_file(item.path)
-                    result.deleted_files += 1
-                except DeleteError as exc:
-                    # The object turned into a reparse point or a directory
-                    # after the scan — the signature of a swap attempt, not a
-                    # file to delete. Refuse it loudly.
-                    result.refused_files += 1
-                    _log.warning("refused %s at delete time: %s", item.path, exc)
-                except PermissionError:
-                    # A locked file is in use. Expected, not an error worth
-                    # reporting to the operator individually.
-                    result.failed_files += 1
-                except OSError as exc:
-                    result.failed_files += 1
-                    if len(result.errors) < 20:
-                        result.errors.append(
-                            f"{item.path.name}: {exc.strerror or exc}"
-                        )
-
-            if not dry_run and category.remove_empty_dirs:
+            if category.remove_empty_dirs:
                 self._remove_empty_dirs(roots)
 
         if not dry_run:
@@ -377,16 +351,76 @@ class CleanupEngine:
             )
         return result
 
+    def _approves_for_delete(
+        self,
+        path: pathlib.Path,
+        resolved_roots: list[pathlib.Path],
+        parents: dict[pathlib.Path, tuple[pathlib.Path, bool]],
+        category: CleanupCategory,
+        now: float,
+    ) -> tuple[bool, str]:
+        """The delete-time gate, re-run immediately before removal.
+
+        Containment is checked on the *resolved parent directory*, cached
+        across the files that share it, because that is where the dangerous
+        redirection can happen. Protection is evaluated on the original
+        path, because that is the name :func:`delete_file` will open.
+
+        Args:
+            resolved_roots: The category's roots, already resolved once.
+            parents: Cache of parent -> (resolved parent, ancestor
+                protected), reused across every file in the directory.
+        """
+        allowed = waived_fragments(category)
+        parent = path.parent
+        cached = parents.get(parent)
+        if cached is None:
+            cached = (
+                _resolve(parent),
+                self.is_protected(parent, allowed_fragments=allowed),
+            )
+            parents[parent] = cached
+        resolved_parent, parent_protected = cached
+
+        if not any(
+            within(resolved_parent, root) for root in resolved_roots
+        ):
+            return False, "outside its category root"
+        if parent_protected:
+            return False, "protected"
+        # The ancestors are settled by the cache above; only this file's own
+        # name and extension are left to check.
+        if component_is_protected(path.name, allowed) or path.suffix.lower() in (
+            protected_extensions(allow_user_files=category.clears_user_files)
+        ):
+            return False, "protected"
+        if category.min_age_hours > 0:
+            # Only categories with a threshold pay for the stat. For a
+            # shader cache, where anything present may go, re-reading the
+            # mtime of every file answers a question nobody asked.
+            try:
+                stat = path.stat()
+            except OSError:
+                return False, "unreadable"
+            if (now - stat.st_mtime) / 3600.0 < category.min_age_hours:
+                return False, "too new"
+        return True, ""
+
     def _remove_empty_dirs(self, roots: list[pathlib.Path]) -> None:
         """Remove directories left empty. The roots themselves are kept."""
         for root in roots:
+            resolved_root = _resolve(root)
             for dirpath, dirnames, filenames in os.walk(
                 root, topdown=False, followlinks=False
             ):
                 current = pathlib.Path(dirpath)
                 if current == root or dirnames or filenames:
                     continue
-                if self.is_protected(current) or not self._contained(current, root):
+                # Same pre-resolved comparison as the delete gate: one
+                # resolve for the directory, none for the root.
+                if self.is_protected(current) or not within(
+                    _resolve(current), resolved_root
+                ):
                     continue
                 try:
                     current.rmdir()
@@ -402,49 +436,6 @@ def _resolve(path: pathlib.Path) -> pathlib.Path:
         return path
 
 
-def _matches(name: str, patterns: tuple[str, ...]) -> bool:
-    return any(pattern == "*" or fnmatch(name, pattern) for pattern in patterns)
 
 
-def _entry_is_junction(entry: os.DirEntry) -> bool:
-    """Detect an NTFS junction on a scandir entry."""
-    try:
-        return bool(entry.stat(follow_symlinks=False).st_reparse_tag)
-    except (OSError, AttributeError, ValueError):
-        return False
 
-
-def _component_is_protected(
-    component: str, allowed: frozenset[str] = frozenset()
-) -> bool:
-    """Match one path component against the protected-name list.
-
-    A component counts as protected when it equals a fragment, or begins
-    with it followed by a separator — so ``OneDrive - Contoso`` and
-    ``SmartShell Client`` are caught, while ``my-documents-backup`` is not
-    mistaken for ``Documents``.
-
-    Args:
-        allowed: Fragments the owning category waived. A component matching
-            one of those passes; every other fragment still applies, so a
-            category that waives "battle.net" gains nothing towards
-            "steamapps".
-    """
-    lowered = component.lower()
-    for fragment in PROTECTED_PATH_FRAGMENTS:
-        if fragment in allowed:
-            continue
-        if lowered == fragment:
-            return True
-        for separator in (" ", "-", "_", "."):
-            if lowered.startswith(fragment + separator):
-                return True
-    return False
-
-
-def _is_junction(path: pathlib.Path) -> bool:
-    """Detect an NTFS junction, which ``is_symlink()`` does not report."""
-    try:
-        return bool(os.lstat(path).st_reparse_tag)  # type: ignore[attr-defined]
-    except (OSError, AttributeError, ValueError):
-        return False

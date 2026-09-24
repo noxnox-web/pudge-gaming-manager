@@ -146,6 +146,7 @@ missing asset fails the build instead of shipping a blank window icon.
 | `SetPowerPlanTweak` | Switches the active scheme to High Performance; **verified apply/rollback on real hardware**. Offered by `OPTIMIZE PC`, and self-skips when that scheme is already active or absent |
 | `SetRefreshRateTweak` | Raises a display to its maximum refresh rate at the current resolution |
 | Cleanup engine | Allowlisted cleanup across 20 categories — temp files, shader caches, crash dumps, servicing logs, six browsers' page caches (per-profile, via wildcard roots), five game launchers' caches and logs, and the Downloads folder — plus the Recycle Bin through `SHEmptyRecycleBinW`. Five safety layers, two narrow and individually-tested waivers; counted in the preview before anything is deleted and marked irreversible in the UI |
+| Cleanup performance | A full pass over 20 000 files went from 43 s to under 5 s. The delete-time gate resolves each parent directory once instead of each file, categories are scanned in parallel, deletions are overlapped across eight threads, and `verify` reads free space instead of walking the tree a second time. The largest single win was replacing `pathlib.is_relative_to`, which builds and compares every ancestor Path on this Python — 15 us per call, several calls per file |
 | Disk usage survey | Read-only. Reports the largest folders at a fixed depth under the profile, ProgramData, both Program Files and Windows, with a per-root time budget and an explicit "partial" flag. Deletes nothing: it exists to answer what the cleaner's allowlist deliberately says nothing about |
 | Startup manager | Lists `Run`/`RunOnce` entries (HKCU, HKLM, 32-bit view) and both Startup folders with their enabled state, and toggles them through the `StartupApproved` flag Task Manager writes. Nothing is deleted, the change is reversible, and the state is read back from the registry rather than assumed. PGM never writes to a `Run` key — the allowlist still refuses them |
 | `OptimizationPipeline` | Scan findings -> tweaks -> preview -> apply -> rescan, with a before/after report |
@@ -157,7 +158,7 @@ missing asset fails the build instead of shipping a blank window icon.
 | Issue detection | Findings carry severity, remedy and threshold provenance |
 | Dashboard GUI | PySide6 dark theme; scan, optimize, profile, cleanup and Steam-reset work run on worker threads; score explainer; **ОЧИСТКА ДИСКА / ОЧИСТКА СТИМА / Save as profile… / Compare with profile…**. A write in progress (apply, wipe or cleanup) blocks the window from closing |
 
-**522 tests passing**, plus one opt-in live test that changes and restores
+**544 tests passing**, plus one opt-in live test that changes and restores
 the active power plan (`PGM_LIVE_SYSTEM_TESTS=1`).
 
 ### Running it

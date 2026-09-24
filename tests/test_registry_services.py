@@ -113,7 +113,7 @@ def test_value_types_round_trip(
 def test_unsupported_type_is_refused(
     registry: RegistryManager, scratch_key: str
 ) -> None:
-    with pytest.raises(RegistryError, match="Unsupported registry value type"):
+    with pytest.raises(RegistryError, match="не поддерживается"):
         registry.write(Hive.HKCU, scratch_key, "X", "y", "REG_NONSENSE")
 
 
@@ -174,7 +174,7 @@ def test_allowlist_refuses_an_arbitrary_key() -> None:
         guarded.write(
             Hive.HKLM, "SOFTWARE\\Attacker\\Payload", "X", "y", "REG_SZ"
         )
-    assert "not on the list" in excinfo.value.reason
+    assert "нет в списке разрешённых" in excinfo.value.reason
 
 
 @pytest.mark.parametrize(
@@ -229,7 +229,7 @@ def test_parse_hive_accepts_abbreviations() -> None:
 def test_parse_hive_rejects_nonsense() -> None:
     from pudge_gaming_manager.utilities.exceptions import PgmError
 
-    with pytest.raises(PgmError, match="Unknown registry hive"):
+    with pytest.raises(PgmError, match="Неизвестный раздел реестра"):
         parse_hive("HKEY_MADE_UP")
 
 
@@ -273,7 +273,7 @@ def test_unknown_service_reports_clearly() -> None:
     manager = ServiceManager()
     with pytest.raises(ServiceError) as excinfo:
         manager._require_modifiable("PgmNoSuchServiceXyz", "stop")
-    assert "not installed" in excinfo.value.reason
+    assert "не установлена" in excinfo.value.reason
 
 
 # -- services: read-only against the live machine -------------------------

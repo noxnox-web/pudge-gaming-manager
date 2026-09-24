@@ -17,6 +17,15 @@ from enum import Enum
 from typing import Any
 
 
+#: The one drift result the engine treats as "nothing to do" rather than
+#: "something moved, stand down". It is a sentinel, not a message: the
+#: engine compares against this object, so the wording below can be
+#: translated or reworded without changing which outcome is recorded.
+#: Deciding NOT_NEEDED vs SKIPPED by matching display text is precisely the
+#: bug this replaces.
+ALREADY_DESIRED = "уже в нужном состоянии"
+
+
 class RiskLevel(str, Enum):
     """How much damage a change could do if it goes wrong (rule #38)."""
 
@@ -258,15 +267,15 @@ class Tweak(ABC):
         """
         fresh = self.scan(ctx)
         if not fresh.needs_change:
-            return "already in the desired state"
+            return ALREADY_DESIRED
         if (
             fresh.current_value != planned.current_value
             or fresh.desired_value != planned.desired_value
         ):
             return (
-                f"changed since the preview (was {planned.current_value!r}, "
-                f"now {fresh.current_value!r}); nothing was changed — rescan "
-                "and review again"
+                f"изменилось после превью (было {planned.current_value!r}, "
+                f"стало {fresh.current_value!r}); ничего не изменено — "
+                "пересканируйте и проверьте заново"
             )
         return None
 

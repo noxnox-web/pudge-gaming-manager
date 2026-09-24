@@ -149,7 +149,7 @@ def test_record_error_persists_remedy(db: Database) -> None:
     row = db.query_one("SELECT * FROM errors")
     assert row is not None
     assert row["error_type"] == "PrivilegeError"
-    assert "Administrator" in row["remedy"]
+    assert "администратора" in row["remedy"]
 
 
 def test_bad_sql_raises_actionable_storage_error(db: Database) -> None:

@@ -165,11 +165,11 @@ class RegistryManager:
             return
         if not is_allowed_key(hive, subkey):
             raise RegistryError(
-                what=f"Refused to touch registry key '{hive.value}\\{subkey}'",
-                reason="This key is not on the list of keys this tool may modify.",
+                what=f"Отказано в доступе к ключу «{hive.value}\\{subkey}»",
+                reason="Этого ключа нет в списке разрешённых для изменения.",
                 remedy=(
-                    "Only settings shipped with Pudge Cleaner can be "
-                    "changed. A profile cannot introduce new registry paths."
+                    "Менять можно только настройки, встроенные в Pudge "
+                    "Cleaner. Профиль не может добавить новые пути реестра."
                 ),
                 context={"hive": hive.value, "subkey": subkey},
             )
@@ -222,16 +222,16 @@ class RegistryManager:
             return RegistryValue(hive, subkey, name, absent=True)
         except PermissionError as exc:
             raise RegistryError(
-                what=f"Cannot read '{hive.value}\\{subkey}\\{name}'",
-                reason="Access denied.",
-                remedy="Run Pudge Cleaner as Administrator.",
+                what=f"Не удалось прочитать «{hive.value}\\{subkey}\\{name}»",
+                reason="Отказано в доступе.",
+                remedy="Запустите Pudge Cleaner от имени администратора.",
                 context={"hive": hive.value, "subkey": subkey, "name": name},
             ) from exc
         except OSError as exc:
             raise RegistryError(
-                what=f"Cannot read '{hive.value}\\{subkey}\\{name}'",
+                what=f"Не удалось прочитать «{hive.value}\\{subkey}\\{name}»",
                 reason=str(exc),
-                remedy="Check that the setting exists in Registry Editor.",
+                remedy="Проверьте в редакторе реестра, что настройка существует.",
             ) from exc
 
         return RegistryValue(
@@ -262,10 +262,10 @@ class RegistryManager:
         type_code = TYPES_BY_NAME.get(type_name)
         if type_code is None:
             raise RegistryError(
-                what=f"Cannot write '{name}'",
-                reason=f"Unsupported registry value type '{type_name}'.",
+                what=f"Не удалось записать «{name}»",
+                reason=f"Тип значения реестра «{type_name}» не поддерживается.",
                 remedy=(
-                    "Supported types: " + ", ".join(sorted(TYPES_BY_NAME))
+                    "Поддерживаются: " + ", ".join(sorted(TYPES_BY_NAME))
                 ),
             )
 
@@ -279,19 +279,19 @@ class RegistryManager:
                 winreg.SetValueEx(key, name, 0, type_code, data)
         except PermissionError as exc:
             raise RegistryError(
-                what=f"Cannot change '{hive.value}\\{subkey}\\{name}'",
-                reason="Access denied.",
-                remedy="Run Pudge Cleaner as Administrator.",
+                what=f"Не удалось изменить «{hive.value}\\{subkey}\\{name}»",
+                reason="Отказано в доступе.",
+                remedy="Запустите Pudge Cleaner от имени администратора.",
             ) from exc
         except FileNotFoundError as exc:
             raise RegistryError(
-                what=f"Cannot change '{hive.value}\\{subkey}\\{name}'",
-                reason="The registry key does not exist.",
-                remedy="No action available; the setting is not present on this PC.",
+                what=f"Не удалось изменить «{hive.value}\\{subkey}\\{name}»",
+                reason="Такого ключа реестра нет.",
+                remedy="Сделать ничего нельзя: этой настройки на ПК нет.",
             ) from exc
         except OSError as exc:
             raise RegistryError(
-                what=f"Cannot change '{hive.value}\\{subkey}\\{name}'",
+                what=f"Не удалось изменить «{hive.value}\\{subkey}\\{name}»",
                 reason=str(exc),
                 remedy=None,
             ) from exc
@@ -320,13 +320,13 @@ class RegistryManager:
             return False
         except PermissionError as exc:
             raise RegistryError(
-                what=f"Cannot remove '{hive.value}\\{subkey}\\{name}'",
-                reason="Access denied.",
-                remedy="Run Pudge Cleaner as Administrator.",
+                what=f"Не удалось удалить «{hive.value}\\{subkey}\\{name}»",
+                reason="Отказано в доступе.",
+                remedy="Запустите Pudge Cleaner от имени администратора.",
             ) from exc
         except OSError as exc:
             raise RegistryError(
-                what=f"Cannot remove '{hive.value}\\{subkey}\\{name}'",
+                what=f"Не удалось удалить «{hive.value}\\{subkey}\\{name}»",
                 reason=str(exc),
             ) from exc
 
@@ -391,8 +391,8 @@ def parse_hive(text: str) -> Hive:
     hive = lookup.get(text.strip().lower())
     if hive is None:
         raise PgmError(
-            what=f"Unknown registry hive '{text}'",
-            reason="Only HKLM, HKCU, HKCR and HKU are supported.",
-            remedy="Correct the profile and try again.",
+            what=f"Неизвестный раздел реестра «{text}»",
+            reason="Поддерживаются только HKLM, HKCU, HKCR и HKU.",
+            remedy="Исправьте профиль и повторите.",
         )
     return hive

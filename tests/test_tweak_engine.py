@@ -15,6 +15,7 @@ import pytest
 from pudge_gaming_manager.core.optimization import engine as engine_module
 from pudge_gaming_manager.core.optimization.engine import TweakEngine
 from pudge_gaming_manager.core.optimization.tweak import (
+    ALREADY_DESIRED,
     ApplyResult,
     BackupRecord,
     BackupScope,
@@ -252,7 +253,7 @@ def test_scan_error_is_reported_without_killing_the_plan(db: Database) -> None:
 
     assert len(plan.changes) == 2
     assert not plan.changes[0].will_apply
-    assert "scan error" in plan.changes[0].skip_reason
+    assert "ошибка при сканировании" in plan.changes[0].skip_reason
 
 
 # -- dry run ---------------------------------------------------------------
@@ -281,7 +282,7 @@ def test_preview_lists_planned_and_skipped(db: Database, admin: None) -> None:
 
     assert "1 changes planned" in text
     assert "old -> new" in text
-    assert "already in the desired state" in text
+    assert ALREADY_DESIRED in text
 
 
 # -- risk gating -----------------------------------------------------------
@@ -291,7 +292,7 @@ def test_medium_risk_requires_opt_in(db: Database, admin: None) -> None:
     tweak = FakeTweak(risk=RiskLevel.MEDIUM)
     plan = TweakEngine(db).plan([tweak])
     assert not plan.changes[0].will_apply
-    assert "requires explicit approval" in plan.changes[0].skip_reason
+    assert "отдельного подтверждения" in plan.changes[0].skip_reason
 
 
 def test_medium_risk_runs_when_opted_in(db: Database, admin: None) -> None:
@@ -306,7 +307,7 @@ def test_critical_is_never_applied_even_when_opted_in(
     eng = TweakEngine(db, allow_risk_above_low=True)
     plan = eng.plan([FakeTweak(risk=RiskLevel.CRITICAL)])
     assert not plan.changes[0].will_apply
-    assert "never applied automatically" in plan.changes[0].skip_reason
+    assert "не применяются автоматически" in plan.changes[0].skip_reason
 
 
 def test_safe_and_low_apply_without_opt_in(db: Database, admin: None) -> None:
@@ -321,7 +322,7 @@ def test_admin_requirement_blocks_when_not_elevated(
     monkeypatch.setattr(engine_module, "is_admin", lambda: False)
     plan = TweakEngine(db).plan([FakeTweak(requires_admin=True)])
     assert not plan.changes[0].will_apply
-    assert "administrator" in plan.changes[0].skip_reason.lower()
+    assert "права администратора" in plan.changes[0].skip_reason.lower()
 
 
 def test_no_change_needed_is_not_a_failure(db: Database, admin: None) -> None:
@@ -419,7 +420,7 @@ def test_a_setting_changed_since_the_preview_is_not_applied(db: Database) -> Non
     report = engine.apply(plan)
 
     assert report.results[0].outcome is Outcome.SKIPPED
-    assert "changed since the preview" in report.results[0].detail
+    assert "изменилось после превью" in report.results[0].detail
     assert "backup" not in tweak.calls and "apply" not in tweak.calls
 
 
@@ -442,7 +443,7 @@ def test_a_failed_re_read_blocks_the_change(db: Database) -> None:
 
     report = engine.apply(plan)
     assert report.results[0].outcome is Outcome.SKIPPED
-    assert "could not be re-read" in report.results[0].detail
+    assert "не удалось перечитать" in report.results[0].detail
     assert "apply" not in tweak.calls
 
 
@@ -532,7 +533,7 @@ def test_medium_risk_needs_elevation_even_when_opted_in(
     eng = TweakEngine(db, allow_risk_above_low=True)
     plan = eng.plan([FakeTweak(risk=RiskLevel.MEDIUM, requires_admin=False)])
     assert not plan.changes[0].will_apply
-    assert "administrator" in plan.changes[0].skip_reason
+    assert "права администратора" in plan.changes[0].skip_reason
 
 
 def test_low_risk_without_admin_flag_runs_unelevated(
@@ -552,7 +553,7 @@ def test_unselected_changes_are_skipped_not_applied(db: Database) -> None:
     plan = engine.plan([keep, drop]).with_selection({0})
 
     assert [c.will_apply for c in plan.changes] == [True, False]
-    assert plan.changes[1].skip_reason == "not selected by the operator"
+    assert plan.changes[1].skip_reason == "оператор не выбрал"
 
     report = engine.apply(plan)
     assert "apply" in keep.calls
@@ -564,7 +565,7 @@ def test_selection_cannot_revive_a_change_the_gate_refused(db: Database) -> None
     refused = FakeTweak(risk=RiskLevel.MEDIUM)  # no opt-in -> refused by the gate
     plan = TweakEngine(db).plan([refused]).with_selection({0})
     assert not plan.changes[0].will_apply
-    assert "explicit approval" in plan.changes[0].skip_reason
+    assert "отдельного подтверждения" in plan.changes[0].skip_reason
 
 
 def test_preview_selection_keeps_the_score_and_run(db: Database) -> None:

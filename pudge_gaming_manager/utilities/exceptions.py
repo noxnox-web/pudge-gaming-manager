@@ -16,11 +16,16 @@ class PgmError(Exception):
 
     Args:
         what: The operation that failed, in plain language.
-            e.g. ``'Failed to modify Windows service "Spooler"'``
-        reason: Why it failed. e.g. ``"Access denied."``
+            e.g. ``'Не удалось изменить службу Windows «Spooler»'``
+        reason: Why it failed. e.g. ``"Отказано в доступе."``
         remedy: The concrete action that would fix it, or ``None`` when no
-            user action can. e.g. ``"Run Pudge Cleaner as Administrator."``
+            user action can. e.g. ``"Запустите Pudge Cleaner от имени
+            администратора."``
         context: Structured detail for logs. Never shown raw to the user.
+
+    These three are written in Russian: they are the text the operator
+    reads, and the interface around them is Russian. Docstrings, log lines
+    and exception class names stay in English, for whoever reads the code.
     """
 
     def __init__(
@@ -66,9 +71,9 @@ class PrivilegeError(PgmError):
 
     def __init__(self, operation: str, context: dict[str, Any] | None = None) -> None:
         super().__init__(
-            what=f"Cannot perform: {operation}",
-            reason="This operation requires administrator privileges.",
-            remedy="Run Pudge Cleaner as Administrator.",
+            what=f"Не удалось выполнить: {operation}",
+            reason="Для этой операции нужны права администратора.",
+            remedy="Запустите Pudge Cleaner от имени администратора.",
             context=context,
         )
         self.operation = operation
@@ -86,10 +91,10 @@ class CommandError(PgmError):
 class CommandNotFoundError(CommandError):
     def __init__(self, executable: str, context: dict[str, Any] | None = None) -> None:
         super().__init__(
-            what=f"Cannot run required program '{executable}'",
-            reason="The program was not found on this system.",
+            what=f"Не удалось запустить нужную программу «{executable}»",
+            reason="Программа не найдена в системе.",
             remedy=(
-                f"Confirm that '{executable}' is installed and available on PATH."
+                f"Проверьте, что «{executable}» установлена и доступна в PATH."
             ),
             context=context,
         )
@@ -101,11 +106,11 @@ class CommandTimeoutError(CommandError):
         self, command: str, timeout_s: float, context: dict[str, Any] | None = None
     ) -> None:
         super().__init__(
-            what=f"Command did not finish in time: {command}",
-            reason=f"No response after {timeout_s:.0f} seconds.",
+            what=f"Команда не завершилась вовремя: {command}",
+            reason=f"Ответа нет уже {timeout_s:.0f} с.",
             remedy=(
-                "The system may be under heavy load. Close running games and "
-                "try again."
+                "Возможно, система сильно загружена. Закройте запущенные игры "
+                "и повторите."
             ),
             context=context,
         )
@@ -125,9 +130,11 @@ class CommandFailedError(CommandError):
         context: dict[str, Any] | None = None,
     ) -> None:
         detail = stderr.strip().splitlines()
-        reason = detail[0] if detail else f"The command exited with code {exit_code}."
+        reason = (
+            detail[0] if detail else f"Команда завершилась с кодом {exit_code}."
+        )
         super().__init__(
-            what=f"Command failed: {command}",
+            what=f"Команда завершилась ошибкой: {command}",
             reason=reason,
             remedy=remedy,
             context=context,
@@ -162,11 +169,12 @@ class ProtectedResourceError(PgmError):
         self, resource: str, reason: str, context: dict[str, Any] | None = None
     ) -> None:
         super().__init__(
-            what=f"Refused to modify protected resource '{resource}'",
+            what=f"Отказано в изменении защищённого ресурса «{resource}»",
             reason=reason,
             remedy=(
-                "This resource is protected because club software depends on it. "
-                "Edit the protected-applications list in Settings if this is wrong."
+                "Ресурс защищён, потому что от него зависит клубное ПО. "
+                "Если это ошибка, измените список защищённых приложений в "
+                "настройках."
             ),
             context=context,
         )
@@ -229,11 +237,11 @@ class RollbackError(TweakError):
     ) -> None:
         super().__init__(
             tweak_id=tweak_id,
-            what=f"Could not undo change '{tweak_id}'",
+            what=f"Не удалось отменить изменение «{tweak_id}»",
             reason=reason,
             remedy=(
-                "Restore this setting manually. Its original value is recorded "
-                "in the audit log (audit.log, and the audit_log table)."
+                "Верните эту настройку вручную. Исходное значение записано в "
+                "журнале аудита (файл audit.log и таблица audit_log)."
             ),
             context=context,
         )
@@ -263,11 +271,11 @@ class ProfileSchemaError(ProfileError):
         self, path: str, problem: str, context: dict[str, Any] | None = None
     ) -> None:
         super().__init__(
-            what=f"Rejected profile '{path}'",
+            what=f"Профиль «{path}» отклонён",
             reason=problem,
             remedy=(
-                "Use a profile exported by Pudge Cleaner 1.0 or later. "
-                "Profiles are not accepted if they contain unknown fields."
+                "Используйте профиль, экспортированный Pudge Cleaner 1.0 или "
+                "новее. Профили с неизвестными полями не принимаются."
             ),
             context=context,
         )
@@ -281,8 +289,11 @@ class UnsupportedPlatformError(PgmError):
         self, operation: str, detail: str, context: dict[str, Any] | None = None
     ) -> None:
         super().__init__(
-            what=f"Cannot perform: {operation}",
+            what=f"Не удалось выполнить: {operation}",
             reason=detail,
-            remedy="No action available. This feature requires a different Windows version.",
+            remedy=(
+                "Сделать ничего нельзя: этой возможности нужна другая версия "
+                "Windows."
+            ),
             context=context,
         )

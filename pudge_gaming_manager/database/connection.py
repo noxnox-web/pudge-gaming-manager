@@ -72,11 +72,11 @@ class Database:
             self.path.parent.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
             raise StorageError(
-                what=f"Cannot create the data folder '{self.path.parent}'",
+                what=f"Не удалось создать папку данных «{self.path.parent}»",
                 reason=str(exc),
                 remedy=(
-                    "Run Pudge Cleaner as Administrator, or choose a "
-                    "different data folder in Settings."
+                    "Запустите Pudge Cleaner от имени администратора или "
+                    "выберите другую папку данных в настройках."
                 ),
             ) from exc
         self._refuse_planted_storage()
@@ -93,14 +93,15 @@ class Database:
             owner = untrusted_owner(target)
             if owner is not None:
                 raise StorageError(
-                    what=f"Refused to use '{target}'",
+                    what=f"Отказано в использовании «{target}»",
                     reason=(
-                        f"It is owned by another account ({owner}), so that "
-                        "account could rewrite PGM's backups and audit log."
+                        f"Папка принадлежит другой учётной записи ({owner}), "
+                        "а значит, та запись может переписать бэкапы и журнал "
+                        "аудита программы."
                     ),
                     remedy=(
-                        "Delete this folder as Administrator and start Pudge "
-                        "Gaming Manager again; it will be recreated safely."
+                        "Удалите эту папку от имени администратора и запустите "
+                        "Pudge Cleaner заново — она будет создана безопасно."
                     ),
                     context={"path": str(target), "owner": owner},
                 )
@@ -121,11 +122,11 @@ class Database:
             )
         except sqlite3.Error as exc:
             raise StorageError(
-                what=f"Cannot open the database '{self.path}'",
+                what=f"Не удалось открыть базу данных «{self.path}»",
                 reason=str(exc),
                 remedy=(
-                    "Check that the file is not read-only and that another "
-                    "copy of Pudge Cleaner is not holding it."
+                    "Проверьте, что файл не только для чтения и что его не "
+                    "держит другая копия Pudge Cleaner."
                 ),
             ) from exc
 
@@ -168,9 +169,9 @@ class Database:
             return self.connection.execute(sql, params)
         except sqlite3.Error as exc:
             raise StorageError(
-                what="A database operation failed",
+                what="Операция с базой данных не удалась",
                 reason=str(exc),
-                remedy="Check available disk space, then restart the application.",
+                remedy="Проверьте свободное место на диске и перезапустите программу.",
                 context={"sql": sql[:300]},
             ) from exc
 

@@ -154,7 +154,7 @@ def test_scheme_exists() -> None:
 
 def test_set_active_rejects_a_malformed_identifier() -> None:
     manager = PowerManager(runner=FakeRunner())  # type: ignore[arg-type]
-    with pytest.raises(PgmError, match="not a valid power scheme identifier"):
+    with pytest.raises(PgmError, match="не является идентификатором"):
         manager.set_active("; shutdown /s")
 
 
@@ -162,7 +162,7 @@ def test_set_active_rejects_a_missing_scheme() -> None:
     manager = PowerManager(runner=FakeRunner())  # type: ignore[arg-type]
     with pytest.raises(PgmError) as excinfo:
         manager.set_active(BuiltInScheme.ULTIMATE_PERFORMANCE.value)
-    assert "Ultimate Performance" in (excinfo.value.remedy or "")
+    assert "Максимальная производительность" in (excinfo.value.remedy or "")
 
 
 def test_access_denied_becomes_an_actionable_error() -> None:
@@ -172,7 +172,7 @@ def test_access_denied_becomes_an_actionable_error() -> None:
 
     with pytest.raises(PgmError) as excinfo:
         manager.set_active(BuiltInScheme.HIGH_PERFORMANCE.value)
-    assert "Administrator" in (excinfo.value.remedy or "")
+    assert "администратора" in (excinfo.value.remedy or "")
 
 
 # -- tweak lifecycle (fakes only) -----------------------------------------
@@ -220,7 +220,7 @@ def test_validate_refuses_a_plan_this_pc_lacks() -> None:
     ctx = TweakContext()
     validation = tweak.validate(ctx, tweak.scan(ctx))
     assert not validation.ok
-    assert "Ultimate Performance" in validation.reason
+    assert "Максимальная производительность" in validation.reason
 
 
 def test_backup_records_the_previous_guid() -> None:

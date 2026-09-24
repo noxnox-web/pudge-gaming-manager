@@ -124,18 +124,18 @@ class PowerManager:
         target = guid.lower()
         if not _GUID_PATTERN.fullmatch(target):
             raise PgmError(
-                what=f"Cannot switch to power scheme '{guid}'",
-                reason="The value is not a valid power scheme identifier.",
-                remedy="Choose a power plan from the list shown in Settings.",
+                what=f"Не удалось переключиться на схему питания «{guid}»",
+                reason="Это значение не является идентификатором схемы питания.",
+                remedy="Выберите схему питания из списка в настройках.",
             )
         if not self.scheme_exists(target):
             raise PgmError(
-                what="Cannot switch power plan",
-                reason=f"This PC has no power scheme with identifier {target}.",
+                what="Не удалось переключить схему питания",
+                reason=f"На этом ПК нет схемы питания с идентификатором {target}.",
                 remedy=(
-                    "Choose a plan that exists on this machine. "
-                    "'Ultimate Performance' is absent unless it has been "
-                    "added manually."
+                    "Выберите схему, которая есть на этой машине. "
+                    "«Максимальная производительность» отсутствует, пока её "
+                    "не добавят вручную."
                 ),
             )
 
@@ -144,12 +144,15 @@ class PowerManager:
                 ["powercfg", "/setactive", target],
                 timeout_s=20,
                 check=True,
-                remedy="Run Pudge Cleaner as Administrator.",
+                remedy="Запустите Pudge Cleaner от имени администратора.",
             )
         except CommandFailedError as exc:
             raise PgmError(
-                what="Could not change the power plan",
+                what="Не удалось сменить схему питания",
                 reason=exc.reason,
-                remedy=exc.remedy or "Run Pudge Cleaner as Administrator.",
+                remedy=(
+                    exc.remedy
+                    or "Запустите Pudge Cleaner от имени администратора."
+                ),
                 context={"guid": target},
             ) from exc

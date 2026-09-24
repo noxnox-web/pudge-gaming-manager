@@ -22,6 +22,7 @@ from ...utilities.logging_setup import get_logger
 from ...utilities.privileges import is_admin
 from .store import RunStore
 from .tweak import (
+    ALREADY_DESIRED,
     BackupRecord,
     BackupScope,
     Outcome,
@@ -81,7 +82,7 @@ class Plan:
                 if not change.will_apply or index in selected
                 else replace(
                     change, will_apply=False,
-                    skip_reason="not selected by the operator",
+                    skip_reason="оператор не выбрал",
                 )
                 for index, change in enumerate(self.changes)
             ),
@@ -99,7 +100,7 @@ class Plan:
         for change in self.applicable:
             lines.append(f"  + [{change.tweak.risk.value}] {change.summary}")
         for change in self.skipped:
-            lines.append(f"  - [skipped] {change.summary}: {change.skip_reason}")
+            lines.append(f"  - [пропущено] {change.summary}: {change.skip_reason}")
         return lines
 
 
@@ -180,7 +181,7 @@ class TweakEngine:
                         tweak, TweakState(summary=tweak.name),
                         Validation.refuse(exc.reason or exc.what),
                         will_apply=False,
-                        skip_reason=f"could not be read: {exc.reason or exc.what}",
+                        skip_reason=f"не удалось прочитать: {exc.reason or exc.what}",
                     )
                 )
                 continue
@@ -191,7 +192,7 @@ class TweakEngine:
                         tweak, TweakState(summary=tweak.name),
                         Validation.refuse(str(exc)),
                         will_apply=False,
-                        skip_reason=f"scan error: {exc}",
+                        skip_reason=f"ошибка при сканировании: {exc}",
                     )
                 )
                 continue
@@ -209,9 +210,9 @@ class TweakEngine:
     ) -> tuple[bool, str]:
         """Decide whether a validated tweak may actually run."""
         if not state.needs_change:
-            return False, "already in the desired state"
+            return False, ALREADY_DESIRED
         if not validation.ok:
-            return False, validation.reason or "validation refused"
+            return False, validation.reason or "проверка отклонила изменение"
         # MEDIUM and above need elevation whatever the tweak itself declares:
         # the risk class, not the tweak author's flag, decides who may run it.
         needs_admin = (
@@ -220,13 +221,14 @@ class TweakEngine:
             or not tweak.risk.auto_applicable
         )
         if needs_admin and not is_admin():
-            return False, "requires administrator privileges"
+            return False, "нужны права администратора"
         if not tweak.risk.auto_applicable and not self.allow_risk_above_low:
             return False, (
-                f"risk level {tweak.risk.value} requires explicit approval"
+                f"уровень риска {tweak.risk.value} требует отдельного "
+                "подтверждения"
             )
         if tweak.risk is RiskLevel.CRITICAL:
-            return False, "CRITICAL changes are never applied automatically"
+            return False, "изменения уровня CRITICAL никогда не применяются автоматически"
         return True, ""
 
     # -- execution ---------------------------------------------------------
@@ -293,11 +295,11 @@ class TweakEngine:
             drift = tweak.drift_since_plan(self.context, state)
         except Exception as exc:  # noqa: BLE001 - a failed re-read blocks the change
             _log.exception("pre-apply re-check failed for %s", tweak.id)
-            drift = f"could not be re-read before applying ({exc})"
+            drift = f"не удалось перечитать перед применением ({exc})"
         if drift is not None:
             outcome = (
                 Outcome.NOT_NEEDED
-                if drift == "already in the desired state"
+                if drift == ALREADY_DESIRED
                 else Outcome.SKIPPED
             )
             self._store.record_application(

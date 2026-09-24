@@ -169,9 +169,9 @@ class ServiceManager:
         info = self.get_status(name)
         if info is None:
             raise ServiceError(
-                what=f"Cannot {operation} service '{name}'",
-                reason="The service is not installed on this PC.",
-                remedy="Check the service name in Settings.",
+                what=f"Не удалось выполнить «{operation}» для службы «{name}»",
+                reason="Такая служба на этом ПК не установлена.",
+                remedy="Проверьте имя службы в настройках.",
             )
         return info
 
@@ -189,8 +189,8 @@ class ServiceManager:
 
         if startup is StartupType.UNKNOWN:
             raise ServiceError(
-                what=f"Cannot reconfigure service '{name}'",
-                reason="No valid startup type was given.",
+                what=f"Не удалось перенастроить службу «{name}»",
+                reason="Не задан допустимый тип запуска.",
                 remedy=None,
             )
 
@@ -203,7 +203,7 @@ class ServiceManager:
             parameters={"ServiceName": name, "StartupType": startup.value},
             requires_admin=True,
             operation=f"change the startup type of service '{name}'",
-            remedy="Run Pudge Cleaner as Administrator.",
+            remedy="Запустите Pudge Cleaner от имени администратора.",
         )
         audit_event(
             "services", "set_startup_type", target=name,
@@ -215,9 +215,9 @@ class ServiceManager:
         info = self._require_modifiable(name, "stop")
         if not info.can_stop:
             raise ServiceError(
-                what=f"Cannot stop service '{name}'",
-                reason="Windows reports that this service does not accept stop requests.",
-                remedy="No action available.",
+                what=f"Не удалось остановить службу «{name}»",
+                reason="Windows сообщает, что эта служба не принимает команду остановки.",
+                remedy="Сделать ничего нельзя.",
             )
 
         self.powershell.run(
@@ -255,9 +255,9 @@ class ServiceManager:
         info = self.get_status(name)
         if info is None:
             raise ServiceError(
-                what=f"Cannot save the state of service '{name}'",
-                reason="The service is not installed on this PC.",
-                remedy="Check the service name in Settings.",
+                what=f"Не удалось сохранить состояние службы «{name}»",
+                reason="Такая служба на этом ПК не установлена.",
+                remedy="Проверьте имя службы в настройках.",
             )
         return ServiceBackup(
             name=info.name, state=info.state, startup_type=info.startup_type

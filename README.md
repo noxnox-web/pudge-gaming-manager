@@ -101,6 +101,21 @@ violated or if `subprocess` is used outside its one sanctioned module.
 Destructive operations are exercised only against fakes — never the live
 machine.
 
+## Building the executable
+
+```bash
+.venv/Scripts/python.exe -m pip install pyinstaller
+.venv/Scripts/python.exe -m PyInstaller --noconfirm --clean \
+    --name PudgeGamingManager --onefile --windowed --uac-admin run.py
+```
+
+The result is `dist/PudgeGamingManager.exe`, a single self-contained file.
+`--uac-admin` embeds a manifest requesting elevation, so Windows shows a UAC
+prompt at launch: the executable always runs as administrator, which the
+optimize and Steam-reset actions need. `run.py` is the entry point;
+`PGM_SELFTEST=1` makes it construct the dashboard off-screen and exit, which
+is how a build is smoke-tested without a prompt.
+
 ---
 
 ## Current state

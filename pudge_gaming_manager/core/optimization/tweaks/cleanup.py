@@ -18,7 +18,8 @@ from __future__ import annotations
 from ....utilities.logging_setup import get_logger
 from ....windows.cleanup.engine import CleanupEngine
 from ....utilities.formatting import format_size
-from ....windows.cleanup.rules import CleanupCategory, CleanupRisk, default_categories
+from ....windows.cleanup.categories import default_categories
+from ....windows.cleanup.rules import CleanupCategory, CleanupRisk
 from ..tweak import (
     ApplyResult,
     BackupRecord,

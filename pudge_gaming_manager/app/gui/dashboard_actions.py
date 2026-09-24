@@ -1,4 +1,4 @@
-"""Golden Profile and Steam-reset button handlers for the dashboard.
+"""Profile, disk-cleanup and Steam-reset button handlers for the dashboard.
 
 Kept out of ``dashboard.py`` as a mixin so that file stays focused on layout
 and the scan/optimize lifecycle, and under the module-size limit. Every
@@ -19,6 +19,7 @@ from ...core.profiles.storage import PROFILE_FILENAME
 from ...utilities.exceptions import PgmError
 from ...utilities.logging_setup import get_logger
 from . import presenters
+from .cleanup_dialog import CleanupDialog, CleanupResultDialog
 from .profile_dialog import ComparisonDialog
 from .steam_dialog import SteamResetDialog, SteamResultDialog
 
@@ -26,7 +27,7 @@ _log = get_logger(__name__)
 
 
 class ProfileAndGamesActions:
-    """Mixin: save/compare a profile, reset Steam games, startup recovery."""
+    """Mixin: profile, disk cleanup, Steam reset, startup recovery."""
 
     # -- startup -----------------------------------------------------------
 
@@ -65,6 +66,7 @@ class ProfileAndGamesActions:
         self._save_profile.setEnabled(enabled)  # type: ignore[attr-defined]
         self._compare_profile.setEnabled(enabled)  # type: ignore[attr-defined]
         self._reset_steam.setEnabled(enabled)  # type: ignore[attr-defined]
+        self._clean_disk.setEnabled(enabled)  # type: ignore[attr-defined]
 
     def _on_save_profile(self) -> None:
         if self._result is None or self._profiles.busy:  # type: ignore[attr-defined]
@@ -108,6 +110,54 @@ class ProfileAndGamesActions:
         self._status.setText("")  # type: ignore[attr-defined]
         self._set_profile_actions(True)
         QMessageBox.warning(self, "Профиль", message)
+
+    # -- disk cleanup ------------------------------------------------------
+
+    def _on_clean_disk(self) -> None:
+        """Inventory every cleanup category, then show what was found.
+
+        The scan changes nothing; it is the preview that asks permission.
+        Unlike the cleanup inside OPTIMIZE, this offers every category the
+        program knows about, including the ones that are off by default.
+        """
+        if self._cleanup.busy:  # type: ignore[attr-defined]
+            return
+        self._set_profile_actions(False)
+        self._status.setText("Поиск мусора на диске…")  # type: ignore[attr-defined]
+        self._cleanup.start_plan()  # type: ignore[attr-defined]
+
+    def _on_cleanup_planned(self, plan: object) -> None:
+        self._status.setText("")  # type: ignore[attr-defined]
+        self._set_profile_actions(True)
+        if not plan.has_content:  # type: ignore[union-attr]
+            QMessageBox.information(
+                self, "Очистка диска", "Удалять нечего — на диске чисто."
+            )
+            return
+
+        dialog = CleanupDialog(plan, self)  # type: ignore[arg-type]
+        if dialog.exec() != CleanupDialog.DialogCode.Accepted:
+            return
+        selected = dialog.selection()
+        if not selected:
+            return
+
+        self._set_profile_actions(False)
+        self._status.setText("Очистка диска…")  # type: ignore[attr-defined]
+        self._cleanup.start_clean(plan, selected)  # type: ignore[attr-defined]
+
+    def _on_cleanup_finished(self, result: object) -> None:
+        self._status.setText("")  # type: ignore[attr-defined]
+        self._set_profile_actions(True)
+        CleanupResultDialog(result, self).exec()  # type: ignore[arg-type]
+        # Free space changed, so the dashboard's disk figure and score are
+        # now stale. Re-measure rather than leaving a number nobody took.
+        self._controller.start()  # type: ignore[attr-defined]
+
+    def _on_cleanup_failed(self, message: str) -> None:
+        self._status.setText("")  # type: ignore[attr-defined]
+        self._set_profile_actions(True)
+        QMessageBox.warning(self, "Очистка диска", message)
 
     # -- steam reset -------------------------------------------------------
 

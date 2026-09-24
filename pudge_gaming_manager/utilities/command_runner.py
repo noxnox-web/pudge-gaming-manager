@@ -1,4 +1,4 @@
-"""The single place in Pudge Gaming Manager permitted to run external commands.
+"""The single place in Pudge Cleaner permitted to run external commands.
 
 Rule #49: ``subprocess`` must not be scattered across the project. Every
 external invocation goes through :class:`CommandRunner`, which guarantees a

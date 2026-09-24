@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 
 from ...core.types import Issue
 from ..controllers.optimize_controller import OptimizeController
+from ..controllers.cleanup_controller import CleanupController
 from ..controllers.profile_controller import ProfileController
 from ..controllers.scan_controller import ScanController, ScanResult
 from ..controllers.steam_controller import SteamController
@@ -47,7 +48,7 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Pudge Gaming Manager")
+        self.setWindowTitle("Pudge Cleaner")
         self.setWindowIcon(QIcon(logo_path()))
         self.resize(1180, 760)
         self.setStyleSheet(theme.stylesheet())
@@ -57,6 +58,7 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         self._optimizer = OptimizeController(parent=self)
         self._profiles = ProfileController(self)
         self._steam = SteamController(self)
+        self._cleanup = CleanupController(self)
 
         # Widgets must exist before any signal is bound to them.
         self._build()
@@ -77,6 +79,10 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         self._steam.planned.connect(self._on_steam_planned)
         self._steam.wiped.connect(self._on_steam_wiped)
         self._steam.failed.connect(self._on_steam_failed)
+
+        self._cleanup.planned.connect(self._on_cleanup_planned)
+        self._cleanup.cleaned.connect(self._on_cleanup_finished)
+        self._cleanup.failed.connect(self._on_cleanup_failed)
 
         self._controller.start()
         # After the window is up, report any change a previous run left
@@ -100,7 +106,21 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
 
         left = QVBoxLayout()
         left.setSpacing(2)
-        left.addWidget(widgets.label("PUDGE GAMING MANAGER", "Title"))
+
+        # The name and its byline share a row so the credit sits on the
+        # title's baseline rather than under it, where it would read as a
+        # subtitle and crowd out the machine name.
+        title_row = QHBoxLayout()
+        title_row.setSpacing(8)
+        title_row.addWidget(widgets.label("PUDGE CLEANER", "Title"))
+        byline = widgets.label("by fortnoxycake", "Byline")
+        byline.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom
+        )
+        title_row.addWidget(byline)
+        title_row.addStretch(1)
+        left.addLayout(title_row)
+
         self._machine = widgets.label("Сканирование…", "Subtitle")
         left.addWidget(self._machine)
 
@@ -184,6 +204,16 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         self._compare_profile.clicked.connect(self._on_compare_profile)
         buttons.addWidget(self._compare_profile)
         layout.addLayout(buttons)
+
+        # Disk cleanup stands on its own rather than hiding inside
+        # OPTIMIZE: it is the action an operator reaches for by name, and
+        # it is the only path that offers every category, including the
+        # ones that are off by default.
+        self._clean_disk = QPushButton("ОЧИСТКА ДИСКА")
+        self._clean_disk.setObjectName("Primary")
+        self._clean_disk.setEnabled(False)
+        self._clean_disk.clicked.connect(self._on_clean_disk)
+        layout.addWidget(self._clean_disk)
 
         # A club reset: remove every Steam game except those a profile keeps.
         self._reset_steam = QPushButton("ОЧИСТКА СТИМА")
@@ -431,12 +461,14 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
             if self._optimizer.applying
             else "Идёт очистка Стима."
             if self._steam.wiping
+            else "Идёт очистка диска."
+            if self._cleanup.cleaning
             else None
         )
         if blocker is not None:
             QMessageBox.warning(
                 self, "Операция выполняется",
-                f"{blocker} Please wait for it to finish before closing.",
+                f"{blocker} Дождитесь завершения перед закрытием.",
             )
             event.ignore()
             return
@@ -444,4 +476,5 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         self._optimizer.shutdown()
         self._profiles.shutdown()
         self._steam.shutdown()
+        self._cleanup.shutdown()
         super().closeEvent(event)

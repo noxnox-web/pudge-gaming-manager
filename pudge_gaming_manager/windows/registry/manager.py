@@ -168,7 +168,7 @@ class RegistryManager:
                 what=f"Refused to touch registry key '{hive.value}\\{subkey}'",
                 reason="This key is not on the list of keys this tool may modify.",
                 remedy=(
-                    "Only settings shipped with Pudge Gaming Manager can be "
+                    "Only settings shipped with Pudge Cleaner can be "
                     "changed. A profile cannot introduce new registry paths."
                 ),
                 context={"hive": hive.value, "subkey": subkey},
@@ -224,7 +224,7 @@ class RegistryManager:
             raise RegistryError(
                 what=f"Cannot read '{hive.value}\\{subkey}\\{name}'",
                 reason="Access denied.",
-                remedy="Run Pudge Gaming Manager as Administrator.",
+                remedy="Run Pudge Cleaner as Administrator.",
                 context={"hive": hive.value, "subkey": subkey, "name": name},
             ) from exc
         except OSError as exc:
@@ -281,7 +281,7 @@ class RegistryManager:
             raise RegistryError(
                 what=f"Cannot change '{hive.value}\\{subkey}\\{name}'",
                 reason="Access denied.",
-                remedy="Run Pudge Gaming Manager as Administrator.",
+                remedy="Run Pudge Cleaner as Administrator.",
             ) from exc
         except FileNotFoundError as exc:
             raise RegistryError(
@@ -322,7 +322,7 @@ class RegistryManager:
             raise RegistryError(
                 what=f"Cannot remove '{hive.value}\\{subkey}\\{name}'",
                 reason="Access denied.",
-                remedy="Run Pudge Gaming Manager as Administrator.",
+                remedy="Run Pudge Cleaner as Administrator.",
             ) from exc
         except OSError as exc:
             raise RegistryError(

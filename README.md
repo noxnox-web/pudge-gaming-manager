@@ -1,4 +1,4 @@
-# Pudge Gaming Manager
+# Pudge Cleaner
 
 **v1.0.0-dev** — local diagnostics, optimization and configuration management
 for gaming-club PCs. Runs entirely offline. No server, no account, no telemetry.
@@ -106,13 +106,13 @@ machine.
 ```bash
 .venv/Scripts/python.exe -m pip install pyinstaller
 .venv/Scripts/python.exe -m PyInstaller --noconfirm --clean \
-    --name PudgeGamingManager --onefile --windowed --uac-admin \
+    --name PudgeCleaner --onefile --windowed --uac-admin \
     --icon pudge_gaming_manager/app/gui/assets/logo.ico \
     --add-data "pudge_gaming_manager/app/gui/assets;pudge_gaming_manager/app/gui/assets" \
     run.py
 ```
 
-The result is `dist/PudgeGamingManager.exe`, a single self-contained file.
+The result is `dist/PudgeCleaner.exe`, a single self-contained file.
 `--uac-admin` embeds a manifest requesting elevation, so Windows shows a UAC
 prompt at launch: the executable always runs as administrator, which the
 optimize and Steam-reset actions need. `--icon` sets the file icon Explorer
@@ -143,9 +143,9 @@ missing asset fails the build instead of shipping a blank window icon.
 | `TweakEngine` | Full lifecycle with all safety invariants |
 | Tweak contract | Rationale required at class-definition time |
 | `PowerManager` | Locale-independent `powercfg` parsing (GUID + `*` marker) |
-| `SetPowerPlanTweak` | First real tweak — **verified apply/rollback on real hardware** |
+| `SetPowerPlanTweak` | Switches the active scheme to High Performance; **verified apply/rollback on real hardware**. Offered by `OPTIMIZE PC`, and self-skips when that scheme is already active or absent |
 | `SetRefreshRateTweak` | Raises a display to its maximum refresh rate at the current resolution |
-| Cleanup engine | Rule-based temp-file cleanup, counted in the preview before anything is deleted; marked irreversible in the UI |
+| Cleanup engine | Allowlisted cleanup across 15 categories — temp files, shader caches, crash dumps, servicing logs, six browsers' page caches (per-profile, via wildcard roots) and the Downloads folder — plus the Recycle Bin through `SHEmptyRecycleBinW`. Five safety layers; counted in the preview before anything is deleted and marked irreversible in the UI |
 | `OptimizationPipeline` | Scan findings -> tweaks -> preview -> apply -> rescan, with a before/after report |
 | `RegistryManager` / `ServiceManager` | Allowlist matched per path segment and per hive; `Services` and `Run` keys deliberately excluded. Type-preserving backups, protected-service list. Not yet used by any tweak |
 | Network diagnostics | Physical uplink (cable/Wi-Fi, negotiated speed, duplex) kept apart from the path Windows actually routes through, so a VPN is reported as a VPN and never as the network card. Router and internet latency, loss and jitter via `IcmpSendEcho` — no admin rights, no parsing of translated `ping.exe` output. Runs beside the hardware scan |
@@ -153,9 +153,9 @@ missing asset fails the build instead of shipping a blank window icon.
 | Steam club reset | As SteamWiper: removes every game except a built-in keep-list of popular titles (edit `games/steam/default_keep.py`; no profile or config file), with a preview whose checkboxes let the operator rescue any game before deletion; clears `downloading`, `temp`, `shadercache`, `workshop` (whole — including kept games' mods/maps) and `sourcemods` in every library, plus `appcache`, `logs`, `dumps`, `userdata`; **signs every account out** — empties `config` (keeping `config.vdf` and `libraryfolders.vdf`) and deletes each Windows user's saved tokens (`local.vdf`) and Steam web cookies (`htmlcache`). Preview-first with sizes and the number of remembered accounts; everything deleted by handle (junction-swap safe); Steam stopped first |
 | Gaming Score | Transparent, weights configurable, unavailable inputs excluded and renormalised |
 | Issue detection | Findings carry severity, remedy and threshold provenance |
-| Dashboard GUI | PySide6 dark theme; scan, optimize, profile and Steam-reset work run on worker threads; score explainer; **Save as profile… / Compare with profile… / Reset Steam games…**. A write in progress (apply or wipe) blocks the window from closing |
+| Dashboard GUI | PySide6 dark theme; scan, optimize, profile, cleanup and Steam-reset work run on worker threads; score explainer; **ОЧИСТКА ДИСКА / ОЧИСТКА СТИМА / Save as profile… / Compare with profile…**. A write in progress (apply, wipe or cleanup) blocks the window from closing |
 
-**444 tests passing**, plus one opt-in live test that changes and restores
+**476 tests passing**, plus one opt-in live test that changes and restores
 the active power plan (`PGM_LIVE_SYSTEM_TESTS=1`).
 
 ### Running it
@@ -171,12 +171,23 @@ Windows repair (SFC/DISM) · Self-healing · **Restore Golden Profile** ·
 Per-game tuning profiles · Session mode · Benchmark · Maintenance agent ·
 Installer
 
-**`OPTIMIZE PC` acts on scan findings only** — today that means display
-refresh rate, disk cleanup, and (on Windows 11) removing the `Windows.old`
-upgrade-rollback folder when present. It does not act on Golden Profile drift, and
-it never changes the power plan on its own. Comparing against a profile is
-read-only: rows PGM has a tweak for say so, but restoring a profile is not
-built, and the comparison window does not pretend otherwise.
+**`OPTIMIZE PC`** offers four things: raising a display to its maximum
+refresh rate at the current resolution, clearing the default cleanup
+categories, switching the active power scheme to High Performance, and (on
+Windows 11) removing the `Windows.old` upgrade-rollback folder when present.
+Each one self-skips when it is already correct or inapplicable, and the
+preview says so rather than omitting the row. It does not act on Golden
+Profile drift: comparing against a profile is read-only, rows PGM has a
+tweak for say so, but restoring a profile is not built and the comparison
+window does not pretend otherwise.
+
+**`ОЧИСТКА ДИСКА`** is the cleaner on its own. Unlike the cleanup inside
+`OPTIMIZE PC`, which runs the default categories, this scans *every*
+category plus the Recycle Bin and lets the operator tick what goes. Two
+categories start unticked: the Windows servicing logs, which are wanted when
+a failed update is being diagnosed, and the Downloads folder, which holds
+the user's own files. Browser caches are on by default — they name cache
+directories only, so nobody is signed out.
 
 The profile comparison checks hardware, power plan and display. The schema
 also accepts `cleanup` and `services` sections; those are validated but not
@@ -275,4 +286,4 @@ Planned: `SECURITY.md`, `TWEAKS.md`, `PROFILE_SCHEMA.md`, `DEVELOPMENT.md`,
 PGM does not collect personal documents, file contents, passwords, cookies,
 messages or game credentials. It stores no secret of any kind, which is the
 cheapest way to never leak one. All data stays in
-`%ProgramData%\PudgeGamingManager\`.
+`%ProgramData%\PudgeGamingManager\`. The folder keeps its original name after the rename to Pudge Cleaner: moving it would orphan the database, backups and audit log on every machine already running it.

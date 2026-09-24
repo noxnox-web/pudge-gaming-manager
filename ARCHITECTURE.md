@@ -1,4 +1,4 @@
-# Pudge Gaming Manager — Architecture
+# Pudge Cleaner — Architecture
 
 **Version:** 1.0.0-dev · **Status:** Core in development · **Date:** 2026-09-20
 
@@ -6,7 +6,7 @@
 
 ## 1. Purpose and scope
 
-Pudge Gaming Manager (PGM) brings a gaming-club PC to a known-good reference
+Pudge Cleaner (PGM) brings a gaming-club PC to a known-good reference
 configuration, verifies that it stayed there, and reverses any change it made.
 
 It is **not** an "FPS booster". Every change is documented, reversible,
@@ -234,7 +234,7 @@ Errors surface as cause and remedy, never as a raw traceback (rule #36):
 ```
 Failed to modify Windows service "Spooler".
 Reason:   Access denied.
-Required: Run Pudge Gaming Manager as Administrator.
+Required: Run Pudge Cleaner as Administrator.
 ```
 
 ---

@@ -144,12 +144,12 @@ class PowerManager:
                 ["powercfg", "/setactive", target],
                 timeout_s=20,
                 check=True,
-                remedy="Run Pudge Gaming Manager as Administrator.",
+                remedy="Run Pudge Cleaner as Administrator.",
             )
         except CommandFailedError as exc:
             raise PgmError(
                 what="Could not change the power plan",
                 reason=exc.reason,
-                remedy=exc.remedy or "Run Pudge Gaming Manager as Administrator.",
+                remedy=exc.remedy or "Run Pudge Cleaner as Administrator.",
                 context={"guid": target},
             ) from exc

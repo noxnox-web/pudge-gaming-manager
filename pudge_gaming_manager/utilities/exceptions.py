@@ -1,4 +1,4 @@
-"""Exception hierarchy for Pudge Gaming Manager.
+"""Exception hierarchy for Pudge Cleaner.
 
 Every failure a user can encounter must explain *what* failed, *why*, and
 *what to do about it* (rule #36). A bare traceback is never an acceptable
@@ -12,14 +12,14 @@ from typing import Any
 
 
 class PgmError(Exception):
-    """Base for every Pudge Gaming Manager failure.
+    """Base for every Pudge Cleaner failure.
 
     Args:
         what: The operation that failed, in plain language.
             e.g. ``'Failed to modify Windows service "Spooler"'``
         reason: Why it failed. e.g. ``"Access denied."``
         remedy: The concrete action that would fix it, or ``None`` when no
-            user action can. e.g. ``"Run Pudge Gaming Manager as Administrator."``
+            user action can. e.g. ``"Run Pudge Cleaner as Administrator."``
         context: Structured detail for logs. Never shown raw to the user.
     """
 
@@ -68,7 +68,7 @@ class PrivilegeError(PgmError):
         super().__init__(
             what=f"Cannot perform: {operation}",
             reason="This operation requires administrator privileges.",
-            remedy="Run Pudge Gaming Manager as Administrator.",
+            remedy="Run Pudge Cleaner as Administrator.",
             context=context,
         )
         self.operation = operation
@@ -266,7 +266,7 @@ class ProfileSchemaError(ProfileError):
             what=f"Rejected profile '{path}'",
             reason=problem,
             remedy=(
-                "Use a profile exported by Pudge Gaming Manager 1.0 or later. "
+                "Use a profile exported by Pudge Cleaner 1.0 or later. "
                 "Profiles are not accepted if they contain unknown fields."
             ),
             context=context,

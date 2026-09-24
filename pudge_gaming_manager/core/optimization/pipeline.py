@@ -24,13 +24,15 @@ from dataclasses import dataclass, field
 from ...database.connection import Database
 from ...hardware.models import HardwareSnapshot
 from ...utilities.logging_setup import get_logger
-from ...windows.cleanup.rules import CleanupCategory, default_categories
+from ...windows.cleanup.categories import default_categories
+from ...windows.cleanup.rules import CleanupCategory
 from ..diagnostics.issues import Issue
 from ..scoring.score import GamingScore, compute_score
 from .engine import Plan, RunReport, TweakEngine
 from .tweak import Tweak, TweakContext
 from .tweaks.cleanup import CleanTemporaryFilesTweak
 from .tweaks.display import tweaks_for_underperforming_displays
+from .tweaks.power import SetPowerPlanTweak
 from .tweaks.windows_old import RemoveWindowsOldTweak
 
 _log = get_logger(__name__)
@@ -141,20 +143,34 @@ class OptimizationPipeline:
     def build_tweaks(
         self, snapshot: HardwareSnapshot, issues: tuple[Issue, ...] = ()
     ) -> list[Tweak]:
-        """Choose the tweaks that address what this scan actually found.
+        """Choose the tweaks this pass will offer.
 
-        Driven by observations, not by a fixed list. A PC with plenty of
-        disk space and correctly configured displays produces no tweaks at
-        all, and that is the correct outcome rather than a failure.
+        Two kinds of tweak appear here. Ones that depend on what the scan
+        *found* — a display running below its capability — are built from
+        the snapshot. Ones that can decide for themselves are always
+        offered and self-skip in their own ``scan``: the plan then shows
+        "already correct" instead of quietly omitting them, which is the
+        difference between a report the operator can trust and one that
+        hides its reasoning.
         """
+        # ``issues`` stays in the signature because selection is allowed to
+        # depend on the diagnosis; today only the display tweaks are
+        # snapshot-driven, and they read the monitors directly.
         tweaks: list[Tweak] = []
 
         # Displays running below their capability at the current resolution.
         tweaks.extend(tweaks_for_underperforming_displays(snapshot.monitors))
 
-        # Disk pressure on any drive, or simply reclaimable space worth having.
-        if self._storage_needs_attention(snapshot, issues):
-            tweaks.append(CleanTemporaryFilesTweak(self.cleanup_categories))
+        # Reclaimable disk space is worth reclaiming whether or not the
+        # drive is under pressure. This used to be gated on the system disk
+        # being under 25% free, which meant a PC with room to spare never
+        # had its shader caches or crash dumps cleared at all — the cleanup
+        # was invisible rather than absent, which is worse.
+        tweaks.append(CleanTemporaryFilesTweak(self.cleanup_categories))
+
+        # The active power scheme. Self-skips when the target plan is
+        # already active, and refuses when this PC does not have it.
+        tweaks.append(SetPowerPlanTweak())
 
         # The Windows 11 upgrade leftover, if present. The tweak scans for its
         # own applicability, so it is always offered and self-skips elsewhere.
@@ -162,16 +178,6 @@ class OptimizationPipeline:
 
         _log.info("optimization plan: %d candidate tweaks", len(tweaks))
         return tweaks
-
-    @staticmethod
-    def _storage_needs_attention(
-        snapshot: HardwareSnapshot, issues: tuple[Issue, ...]
-    ) -> bool:
-        if any(i.subsystem == "storage" and i.fixable for i in issues):
-            return True
-        disk = snapshot.system_disk
-        free = disk.free_percent.value if disk else None
-        return free is not None and free < 25.0
 
     # -- planning ----------------------------------------------------------
 

@@ -66,6 +66,14 @@ def stylesheet() -> str:
         color: {TEXT_MUTED};
         font-size: 13px;
     }}
+    /* The author credit, set on the title's baseline. Deliberately small
+       and faint: it is a signature, not a second heading. */
+    QLabel#Byline {{
+        color: {TEXT_FAINT};
+        font-size: 11px;
+        font-style: italic;
+        padding-bottom: 3px;
+    }}
     QLabel#SectionHeading {{
         color: {TEXT_MUTED};
         font-size: 11px;

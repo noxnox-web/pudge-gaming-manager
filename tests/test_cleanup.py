@@ -16,12 +16,11 @@ import pytest
 
 from pudge_gaming_manager.windows.cleanup.engine import CleanupEngine
 from pudge_gaming_manager.utilities.formatting import format_size
-from pudge_gaming_manager.windows.cleanup.rules import (
+from pudge_gaming_manager.windows.cleanup.categories import (
     CATEGORIES,
-    CleanupCategory,
-    CleanupRisk,
     default_categories,
 )
+from pudge_gaming_manager.windows.cleanup.rules import CleanupCategory, CleanupRisk
 
 windows_only = pytest.mark.skipif(os.name != "nt", reason="Windows-only behaviour")
 
@@ -102,7 +101,7 @@ def test_missing_root_is_reported_not_crashed(tmp_path: pathlib.Path) -> None:
     report = CleanupEngine((category,)).scan()
 
     assert not report.categories[0].available
-    assert "not present" in report.categories[0].unavailable_reason
+    assert "нет" in report.categories[0].unavailable_reason
 
 
 # -- age gate --------------------------------------------------------------
@@ -165,7 +164,7 @@ def test_admin_only_category_is_skipped_without_elevation(
     report = CleanupEngine((category,)).scan()
 
     assert not report.categories[0].available
-    assert "administrator" in report.categories[0].unavailable_reason
+    assert "администратора" in report.categories[0].unavailable_reason
 
 
 # -- containment (the junction-escape defence) ----------------------------
@@ -318,11 +317,27 @@ def test_every_shipped_category_explains_itself() -> None:
         assert category.roots, f"{category.id} has no root"
 
 
-def test_browser_categories_are_off_by_default() -> None:
-    """Clearing browser data can sign a player out mid-session."""
+def test_browser_caches_are_on_by_default() -> None:
+    """They clear cache directories only, so nobody gets signed out.
+
+    These were once off by default on the theory that clearing browser data
+    ends a player's session. It does not: the roots name cache directories
+    and nothing else, which the test below enforces. Leaving them off meant
+    the largest reclaimable thing on a club PC was never cleared.
+    """
     enabled = {c.id for c in default_categories()}
-    assert "cache.browser.chrome" not in enabled
-    assert "cache.browser.edge" not in enabled
+    browsers = {c.id for c in CATEGORIES if c.id.startswith("cache.browser.")}
+    assert browsers <= enabled
+
+
+def test_categories_holding_user_files_are_off_by_default() -> None:
+    """Deleting someone's downloads is never the default."""
+    for category in CATEGORIES:
+        if category.clears_user_files:
+            assert not category.enabled_by_default, (
+                f"{category.id} clears user files and must be opt-in"
+            )
+            assert category.risk is CleanupRisk.MEDIUM
 
 
 def test_browser_rules_exclude_cookies_and_logins() -> None:

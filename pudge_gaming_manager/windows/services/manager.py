@@ -203,7 +203,7 @@ class ServiceManager:
             parameters={"ServiceName": name, "StartupType": startup.value},
             requires_admin=True,
             operation=f"change the startup type of service '{name}'",
-            remedy="Run Pudge Gaming Manager as Administrator.",
+            remedy="Run Pudge Cleaner as Administrator.",
         )
         audit_event(
             "services", "set_startup_type", target=name,

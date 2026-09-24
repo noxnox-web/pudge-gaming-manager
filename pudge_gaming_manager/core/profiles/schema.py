@@ -96,7 +96,7 @@ class CleanupPolicy(_Strict):
     def _known_categories(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         # Imported lazily: the rules module is a sibling subsystem and this
         # keeps the schema importable on its own.
-        from ...windows.cleanup.rules import CATEGORIES_BY_ID
+        from ...windows.cleanup.categories import CATEGORIES_BY_ID
 
         unknown = [c for c in value if c not in CATEGORIES_BY_ID]
         if unknown:

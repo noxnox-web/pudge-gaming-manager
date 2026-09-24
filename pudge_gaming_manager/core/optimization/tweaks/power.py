@@ -50,12 +50,14 @@ class SetPowerPlanTweak(Tweak):
     name = "Активная схема питания"
     description = (
         "Переключает Windows на выбранную схему питания, чтобы процессор не "
-        "held in a low performance state during play."
+        "удерживался в низком состоянии производительности во время игры."
     )
     rationale = (
-        "The power scheme controls processor performance-state policy. "
-        "Balanced permits low P-states and ramps under load; High "
-        "Performance holds a higher minimum. Documented Windows behaviour."
+        "Схема питания управляет политикой P-состояний процессора. "
+        "«Сбалансированная» разрешает низкие состояния и поднимает частоту "
+        "уже под нагрузкой; «Высокая производительность» держит более "
+        "высокий минимум. Это документированное поведение Windows, а не "
+        "народный твик."
     )
     risk = RiskLevel.LOW
     subsystem = "power"
@@ -69,7 +71,7 @@ class SetPowerPlanTweak(Tweak):
     def __init__(
         self,
         target_guid: str = BuiltInScheme.HIGH_PERFORMANCE.value,
-        target_name: str = "High performance",
+        target_name: str = "Высокая производительность",
         manager: PowerManager | None = None,
     ) -> None:
         self.target_guid = target_guid.lower()
@@ -87,7 +89,7 @@ class SetPowerPlanTweak(Tweak):
         manager = self._pm(ctx)
         active = manager.get_active_scheme()
         current_guid = active.normalized_guid if active else None
-        current_label = (active.name or current_guid) if active else "unknown"
+        current_label = (active.name or current_guid) if active else "неизвестно"
 
         return TweakState(
             current_value=current_guid,
@@ -105,14 +107,14 @@ class SetPowerPlanTweak(Tweak):
         manager = self._pm(ctx)
         if state.current_absent:
             return Validation.refuse(
-                "Не удалось прочитать текущую схему питания, поэтому её нельзя "
-                "be restored afterwards."
+                "Не удалось прочитать текущую схему питания, поэтому вернуть "
+                "её обратно будет нечем."
             )
         if not manager.scheme_exists(self.target_guid):
             return Validation.refuse(
-                f"This PC has no power plan '{self.target_name}'. "
-                "Ultimate Performance in particular is absent unless added "
-                "manually."
+                f"На этом ПК нет схемы питания «{self.target_name}». "
+                "«Максимальная производительность», в частности, "
+                "отсутствует, пока её не добавят вручную."
             )
         return Validation.allow()
 
@@ -147,11 +149,13 @@ class SetPowerPlanTweak(Tweak):
     def verify(self, ctx: TweakContext, state: TweakState) -> Verification:
         active = self._pm(ctx).get_active_guid()
         if active == self.target_guid:
-            return Verification.confirm(active, "Active plan confirmed by powercfg.")
+            return Verification.confirm(
+                active, "powercfg подтверждает активную схему."
+            )
         return Verification.deny(
             active,
-            f"Expected {self.target_guid} to be active but Windows reports "
-            f"{active or 'nothing'}.",
+            f"Ожидалась активная схема {self.target_guid}, а Windows сообщает "
+            f"{active or 'ничего'}.",
         )
 
     def rollback(self, ctx: TweakContext, backup: BackupRecord) -> ApplyResult:
@@ -164,6 +168,9 @@ class SetPowerPlanTweak(Tweak):
         if manager.get_active_guid() != previous.lower():
             return ApplyResult(
                 Outcome.FAILED,
-                f"Tried to restore power plan {previous} but it is not active.",
+                f"Пытались вернуть схему питания {previous}, но активной она "
+                "не стала.",
             )
-        return ApplyResult(Outcome.SUCCESS, f"Power plan restored to {previous}.")
+        return ApplyResult(
+            Outcome.SUCCESS, f"Схема питания восстановлена: {previous}."
+        )

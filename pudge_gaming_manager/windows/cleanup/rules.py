@@ -1,11 +1,15 @@
 """What the cleaner is allowed to touch, and what it must never touch.
 
-This module is a **allowlist**. The cleaner cannot delete anything that is
-not described by a category here, and every category names an explicit root
-directory resolved from an environment variable. There is no "scan the disk
-for junk" mode, because that is how a cleaner deletes someone's save games.
+This module owns the *guards*. The catalogue of categories lives next door
+in ``categories.py``; splitting them keeps each file reviewable and makes it
+plain that adding a category cannot weaken a guard.
 
-Four independent safety layers
+The cleaner cannot delete anything that is not described by a category, and
+every category names explicit root directories resolved from environment
+variables. There is no "scan the disk for junk" mode, because that is how a
+cleaner deletes someone's save games.
+
+Five independent safety layers
 ------------------------------
 1. **Allowlisted roots.** Only the directories below are ever considered.
 2. **Containment.** A candidate's *resolved* path must still sit inside its
@@ -14,7 +18,11 @@ Four independent safety layers
    sandbox.
 3. **Protected paths.** Club software, launchers, anti-cheat and user
    documents are refused even if some future category points at them.
-4. **Minimum age.** Files younger than the category's threshold are left
+4. **Protected extensions.** Documents, saves and executables are refused
+   inside temp folders. A category that exists precisely to remove the
+   user's own files — the Downloads folder — waives this one by declaring
+   ``clears_user_files``; credentials are refused even then.
+5. **Minimum age.** Files younger than the category's threshold are left
    alone, because a file created seconds ago is probably open right now.
 
 The root directory itself is never removed — only its contents.
@@ -27,6 +35,17 @@ import pathlib
 from dataclasses import dataclass
 from enum import Enum
 
+#: Most matches a single wildcard root may expand to. Browser profile globs
+#: resolve to a handful of directories; anything wildly beyond that means
+#: the pattern is wrong, and a wrong pattern must not become a licence to
+#: walk half the profile.
+MAX_ROOT_MATCHES = 64
+
+#: Fixed path components a wildcard root must have before its first
+#: wildcard. ``%LOCALAPPDATA%\\*`` is refused: a pattern has to name the
+#: vendor and the product before it may guess at a profile name.
+MIN_FIXED_COMPONENTS = 3
+
 
 class CleanupRisk(str, Enum):
     """How much a user could miss what is being deleted."""
@@ -38,7 +57,7 @@ class CleanupRisk(str, Enum):
     """Regenerated, but the first use afterwards is slower."""
 
     MEDIUM = "MEDIUM"
-    """A user could notice, e.g. losing browser cache on a shared PC."""
+    """The user's own files, not data the system recreates."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,7 +71,9 @@ class CleanupCategory:
     """Why this is safe to delete — required, same standard as a tweak."""
 
     roots: tuple[str, ...]
-    """Environment-variable templates, e.g. ``'%TEMP%'``."""
+    """Environment-variable templates, e.g. ``'%TEMP%'``. A template may
+    contain ``*`` or ``?`` in its trailing components to address profile
+    directories whose names are not known ahead of time."""
 
     patterns: tuple[str, ...] = ("*",)
     """Glob patterns applied within each root."""
@@ -66,23 +87,61 @@ class CleanupCategory:
     remove_empty_dirs: bool = True
     enabled_by_default: bool = True
 
+    clears_user_files: bool = False
+    """This category holds the user's own files rather than data the system
+    regenerates, so the protected-extension guard does not apply to it.
+    Only the Downloads folder sets this: refusing to delete ``.exe`` and
+    ``.pdf`` there would leave behind exactly what the operator asked to
+    clear. Credentials stay protected regardless."""
 
-def _expand(template: str) -> pathlib.Path | None:
-    """Resolve an environment-variable template to an existing directory."""
+
+def _split_at_wildcard(path: pathlib.Path) -> tuple[pathlib.Path, str] | None:
+    """Split ``path`` into (fixed anchor, glob pattern) at its first wildcard.
+
+    Returns ``None`` when the path holds no wildcard, or when too few fixed
+    components precede it for the pattern to be trustworthy.
+    """
+    parts = path.parts
+    for index, part in enumerate(parts):
+        if "*" in part or "?" in part:
+            if index < MIN_FIXED_COMPONENTS:
+                return None
+            return pathlib.Path(*parts[:index]), str(pathlib.Path(*parts[index:]))
+    return None
+
+
+def _expand(template: str) -> list[pathlib.Path]:
+    """Resolve one root template to the existing directories it names.
+
+    A plain template yields at most one directory. A wildcard template
+    yields every directory it matches, which is how a single entry covers
+    every Chrome profile and Firefox's randomly named profile directory
+    without hard-coding names that differ on every PC.
+    """
     expanded = os.path.expandvars(template)
     if "%" in expanded:  # an unset variable — do not guess a path
-        return None
+        return []
+
     path = pathlib.Path(expanded)
-    return path if path.is_dir() else None
+    split = _split_at_wildcard(path)
+    if split is None:
+        if "*" in expanded or "?" in expanded:
+            return []  # a wildcard too close to the drive root
+        return [path] if path.is_dir() else []
+
+    anchor, pattern = split
+    try:
+        matches = sorted(p for p in anchor.glob(pattern) if p.is_dir())
+    except (OSError, ValueError, IndexError):
+        return []
+    return matches[:MAX_ROOT_MATCHES]
 
 
 def resolve_roots(category: CleanupCategory) -> list[pathlib.Path]:
     """Return the category's roots that actually exist on this machine."""
     resolved: list[pathlib.Path] = []
     for template in category.roots:
-        path = _expand(template)
-        if path is not None:
-            resolved.append(path)
+        resolved.extend(_expand(template))
     return resolved
 
 
@@ -136,14 +195,25 @@ PROTECTED_ROOTS: tuple[str, ...] = (
     "%ProgramData%\\Microsoft\\Windows\\Start Menu",
 )
 
-#: File extensions never deleted, regardless of location or age. These are
-#: the things a cleaner has no business touching even inside a temp folder.
-PROTECTED_EXTENSIONS: frozenset[str] = frozenset(
+#: Never deleted by any category, not even one that clears user files.
+#: Losing a private key or a password database is unrecoverable in a way
+#: that losing a downloaded installer is not.
+CREDENTIAL_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".key", ".pem", ".pfx", ".p12",  # keys and certificates
+        ".kdbx", ".psafe3",              # password databases
+        ".ovpn", ".ppk",                 # VPN and SSH profiles
+    }
+)
+
+#: Refused by every category that clears *system* data — the things a
+#: cleaner has no business touching inside a temp folder. A
+#: ``clears_user_files`` category may remove them, because there the whole
+#: point is to clear the user's own downloads.
+PROTECTED_EXTENSIONS: frozenset[str] = CREDENTIAL_EXTENSIONS | frozenset(
     {
         ".sav", ".save", ".sgame",       # game saves
         ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".pdf", ".odt",
-        ".key", ".pem", ".pfx", ".p12",  # keys and certificates
-        ".kdbx",                          # password databases
         ".sys", ".dll", ".exe",          # never remove executables or drivers
     }
 )
@@ -153,182 +223,30 @@ def protected_roots() -> list[pathlib.Path]:
     """Resolved protected directories present on this machine."""
     resolved: list[pathlib.Path] = []
     for template in PROTECTED_ROOTS:
-        path = _expand(template)
-        if path is not None:
-            resolved.append(path)
+        resolved.extend(_expand(template))
     return resolved
 
 
-# --------------------------------------------------------------------------
-# The categories
-# --------------------------------------------------------------------------
+def protected_extensions(*, allow_user_files: bool = False) -> frozenset[str]:
+    """The extension guard that applies to a given category.
 
-CATEGORIES: tuple[CleanupCategory, ...] = (
-    CleanupCategory(
-        id="temp.user",
-        name="User temporary files",
-        description="Temporary files created by applications for this user.",
-        rationale=(
-            "Windows and applications write scratch data here and are "
-            "expected to clean up after themselves; much of it is orphaned "
-            "by crashes. Anything still needed is recreated on demand."
-        ),
-        roots=("%TEMP%", "%TMP%"),
-        min_age_hours=24.0,
-        risk=CleanupRisk.SAFE,
-    ),
-    CleanupCategory(
-        id="temp.windows",
-        name="Windows temporary files",
-        description="Machine-wide scratch directory used by installers.",
-        rationale=(
-            "Installer and servicing scratch space. Entries older than a day "
-            "belong to finished operations."
-        ),
-        roots=("%SystemRoot%\\Temp",),
-        min_age_hours=24.0,
-        risk=CleanupRisk.SAFE,
-        requires_admin=True,
-    ),
-    CleanupCategory(
-        id="cache.shader.directx",
-        name="DirectX shader cache",
-        description="Compiled shader cache for Direct3D.",
-        rationale=(
-            "Rebuilt automatically by the driver. Clearing it costs a few "
-            "seconds of extra stutter the first time a game runs, and "
-            "resolves the corrupted-cache crashes that follow a driver "
-            "update."
-        ),
-        roots=("%LOCALAPPDATA%\\D3DSCache",),
-        min_age_hours=0.0,
-        risk=CleanupRisk.LOW,
-    ),
-    CleanupCategory(
-        id="cache.shader.nvidia",
-        name="NVIDIA shader cache",
-        description="NVIDIA DirectX and OpenGL shader caches.",
-        rationale=(
-            "Regenerated by the driver. A stale cache after a driver update "
-            "is a common cause of first-launch crashes."
-        ),
-        roots=(
-            "%LOCALAPPDATA%\\NVIDIA\\DXCache",
-            "%LOCALAPPDATA%\\NVIDIA\\GLCache",
-            "%LOCALAPPDATA%\\NVIDIA Corporation\\NV_Cache",
-        ),
-        min_age_hours=0.0,
-        risk=CleanupRisk.LOW,
-    ),
-    CleanupCategory(
-        id="cache.thumbnails",
-        name="Thumbnail cache",
-        description="Explorer thumbnail database files.",
-        rationale=(
-            "Explorer rebuilds thumbnails on demand. Clearing fixes the "
-            "stale or wrong preview images that accumulate over time."
-        ),
-        roots=("%LOCALAPPDATA%\\Microsoft\\Windows\\Explorer",),
-        patterns=("thumbcache_*.db", "iconcache_*.db"),
-        recursive=False,
-        min_age_hours=0.0,
-        risk=CleanupRisk.SAFE,
-    ),
-    CleanupCategory(
-        id="dumps.crash",
-        name="Crash dumps",
-        description="Application crash dumps and Windows error reports.",
-        rationale=(
-            "Diagnostic snapshots of past crashes. They are only useful "
-            "while actively debugging that crash and can be very large."
-        ),
-        roots=(
-            "%LOCALAPPDATA%\\CrashDumps",
-            "%LOCALAPPDATA%\\Microsoft\\Windows\\WER\\ReportArchive",
-            "%LOCALAPPDATA%\\Microsoft\\Windows\\WER\\ReportQueue",
-        ),
-        min_age_hours=24.0,
-        risk=CleanupRisk.LOW,
-    ),
-    CleanupCategory(
-        id="cache.delivery_optimization",
-        name="Delivery Optimization cache",
-        description="Peer-to-peer update data cached for other PCs.",
-        rationale=(
-            "Windows caches update content here to share with other machines "
-            "on the LAN. It is repopulated as needed and can reach several "
-            "gigabytes on a club network."
-        ),
-        roots=("%SystemRoot%\\SoftwareDistribution\\DeliveryOptimization",),
-        min_age_hours=24.0,
-        risk=CleanupRisk.LOW,
-        requires_admin=True,
-    ),
-    CleanupCategory(
-        id="logs.windows",
-        name="Windows log files",
-        description="Servicing and setup logs.",
-        rationale=(
-            "Text logs from completed Windows servicing operations. They are "
-            "read only when diagnosing a failed update."
-        ),
-        roots=("%SystemRoot%\\Logs\\CBS", "%SystemRoot%\\Logs\\DISM"),
-        patterns=("*.log", "*.cab", "*.etl"),
-        min_age_hours=168.0,  # one week
-        risk=CleanupRisk.LOW,
-        requires_admin=True,
-        enabled_by_default=False,
-    ),
-    # Browser caches name the exact subdirectories they clear. Cookies,
-    # saved passwords, history and profile data are deliberately absent:
-    # rule #46 requires stating precisely what browser data is removed, and
-    # signing a player out of their accounts is not "cleanup".
-    CleanupCategory(
-        id="cache.browser.chrome",
-        name="Chrome cache",
-        description="Google Chrome page and shader cache. Not cookies, passwords or history.",
-        rationale=(
-            "Cached page resources, rebuilt on next visit. Deliberately "
-            "excludes cookies, saved logins and history so a player is not "
-            "signed out of their accounts."
-        ),
-        roots=(
-            "%LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\Cache",
-            "%LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\Code Cache",
-            "%LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\GPUCache",
-        ),
-        min_age_hours=0.0,
-        risk=CleanupRisk.MEDIUM,
-        enabled_by_default=False,
-    ),
-    CleanupCategory(
-        id="cache.browser.edge",
-        name="Edge cache",
-        description="Microsoft Edge page and shader cache. Not cookies, passwords or history.",
-        rationale=(
-            "Cached page resources, rebuilt on next visit. Excludes cookies, "
-            "saved logins and history."
-        ),
-        roots=(
-            "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\Default\\Cache",
-            "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\Default\\Code Cache",
-            "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\Default\\GPUCache",
-        ),
-        min_age_hours=0.0,
-        risk=CleanupRisk.MEDIUM,
-        enabled_by_default=False,
-    ),
-)
-
-
-CATEGORIES_BY_ID: dict[str, CleanupCategory] = {c.id: c for c in CATEGORIES}
-
-
-def default_categories() -> tuple[CleanupCategory, ...]:
-    """Categories enabled unless the operator says otherwise.
-
-    Browser caches and Windows logs are off by default: the first can sign a
-    player out of a session, the second is occasionally needed to diagnose a
-    failed update.
+    Args:
+        allow_user_files: The category declares ``clears_user_files``, so
+            only credentials remain protected.
     """
-    return tuple(c for c in CATEGORIES if c.enabled_by_default)
+    return CREDENTIAL_EXTENSIONS if allow_user_files else PROTECTED_EXTENSIONS
+
+
+__all__ = [
+    "CREDENTIAL_EXTENSIONS",
+    "CleanupCategory",
+    "CleanupRisk",
+    "MAX_ROOT_MATCHES",
+    "MIN_FIXED_COMPONENTS",
+    "PROTECTED_EXTENSIONS",
+    "PROTECTED_PATH_FRAGMENTS",
+    "PROTECTED_ROOTS",
+    "protected_extensions",
+    "protected_roots",
+    "resolve_roots",
+]

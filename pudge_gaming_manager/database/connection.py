@@ -20,6 +20,11 @@ from ..utilities.exceptions import StorageError
 from ..utilities.ownership import untrusted_owner
 from .schema import MIGRATIONS, SCHEMA_VERSION
 
+#: The on-disk data folder keeps its original name. Renaming it with the
+#: program would orphan every deployed machine's database, backups and
+#: audit log — the record of what was changed and what was rolled back is
+#: exactly the thing a rename must not silently drop. A rename needs a
+#: migration, not a new constant.
 APP_NAME = "PudgeGamingManager"
 DB_FILENAME = "pgm.db"
 
@@ -70,7 +75,7 @@ class Database:
                 what=f"Cannot create the data folder '{self.path.parent}'",
                 reason=str(exc),
                 remedy=(
-                    "Run Pudge Gaming Manager as Administrator, or choose a "
+                    "Run Pudge Cleaner as Administrator, or choose a "
                     "different data folder in Settings."
                 ),
             ) from exc
@@ -120,7 +125,7 @@ class Database:
                 reason=str(exc),
                 remedy=(
                     "Check that the file is not read-only and that another "
-                    "copy of Pudge Gaming Manager is not holding it."
+                    "copy of Pudge Cleaner is not holding it."
                 ),
             ) from exc
 

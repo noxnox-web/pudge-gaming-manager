@@ -30,6 +30,9 @@ from typing import Any
 
 from .ownership import untrusted_owner
 
+#: Matches ``database.connection.APP_NAME``: both point at the same
+#: ProgramData folder, and it keeps its original name so an upgrade does
+#: not strand an existing machine's logs. See the note there.
 APP_NAME = "PudgeGamingManager"
 AUDIT_LOGGER_NAME = "pgm.audit"
 

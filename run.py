@@ -1,4 +1,4 @@
-"""Frozen-executable entry point for Pudge Gaming Manager.
+"""Frozen-executable entry point for Pudge Cleaner.
 
 PyInstaller bundles this module rather than the package's ``__main__``, so
 its relative imports do not have to be resolved from a frozen ``__main__``.

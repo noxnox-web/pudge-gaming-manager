@@ -1,4 +1,4 @@
-"""SQLite schema for Pudge Gaming Manager (rule #34).
+"""SQLite schema for Pudge Cleaner (rule #34).
 
 Design notes that matter
 ------------------------

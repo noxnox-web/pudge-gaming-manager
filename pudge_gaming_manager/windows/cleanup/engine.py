@@ -34,11 +34,11 @@ from .report import (
     ScanReport,
 )
 from ...utilities.secure_delete import DeleteError, delete_file
+from .categories import default_categories
 from .rules import (
-    PROTECTED_EXTENSIONS,
     PROTECTED_PATH_FRAGMENTS,
     CleanupCategory,
-    default_categories,
+    protected_extensions,
     protected_roots,
     resolve_roots,
 )
@@ -55,7 +55,9 @@ class CleanupEngine:
 
     # -- safety ------------------------------------------------------------
 
-    def is_protected(self, path: pathlib.Path) -> bool:
+    def is_protected(
+        self, path: pathlib.Path, *, allow_user_files: bool = False
+    ) -> bool:
         """True when a path must never be deleted.
 
         Fragments are matched against individual path **components**, never
@@ -64,10 +66,18 @@ class CleanupEngine:
         ``build-protected-assets`` would match the ``protect`` fragment
         (added for the DPAPI key store) and silently disable cleanup for
         everything beneath it.
+
+        Args:
+            allow_user_files: The owning category declares
+                ``clears_user_files``, so only the credential extensions
+                are refused. The path and root guards still apply in full —
+                this relaxes one layer, never the sandbox itself.
         """
         if any(_component_is_protected(part) for part in path.parts):
             return True
-        if path.suffix.lower() in PROTECTED_EXTENSIONS:
+        if path.suffix.lower() in protected_extensions(
+            allow_user_files=allow_user_files
+        ):
             return True
         for root in self._protected_roots:
             try:
@@ -132,7 +142,7 @@ class CleanupEngine:
         )
         if not contained:
             return False, "outside its category root"
-        if self.is_protected(path):
+        if self.is_protected(path, allow_user_files=category.clears_user_files):
             return False, "protected"
         if stat is None:
             try:
@@ -171,13 +181,13 @@ class CleanupEngine:
 
         if category.requires_admin and not is_admin():
             result.available = False
-            result.unavailable_reason = "requires administrator privileges"
+            result.unavailable_reason = "нужны права администратора"
             return result
 
         roots = resolve_roots(category)
         if not roots:
             result.available = False
-            result.unavailable_reason = "not present on this PC"
+            result.unavailable_reason = "на этом ПК нет"
             return result
 
         result.roots_scanned = roots

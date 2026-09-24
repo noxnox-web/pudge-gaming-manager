@@ -17,7 +17,7 @@ def main(argv: list[str] | None = None) -> int:
     setup_logging()
 
     app = QApplication(argv if argv is not None else sys.argv)
-    app.setApplicationName("Pudge Gaming Manager")
+    app.setApplicationName("Pudge Cleaner")
     app.setApplicationVersion("1.0.0-dev")
     app.setWindowIcon(QIcon(logo_path()))
 

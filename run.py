@@ -18,13 +18,16 @@ import sys
 def _selftest() -> int:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtCore import QTimer
+    from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication
 
     from pudge_gaming_manager.app.gui.dashboard import Dashboard
+    from pudge_gaming_manager.app.gui.resources import logo_path
 
     app = QApplication([])
     window = Dashboard()
     window.show()
+    assert not QIcon(logo_path()).isNull(), "bundled logo failed to load"
     QTimer.singleShot(2500, app.quit)
     app.exec()
     window.close()

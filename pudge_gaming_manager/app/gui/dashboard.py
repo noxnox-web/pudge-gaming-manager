@@ -16,7 +16,7 @@ Presentation rules this window enforces:
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -38,6 +38,7 @@ from ..controllers.steam_controller import SteamController
 from . import presenters, theme, widgets
 from .dashboard_actions import ProfileAndGamesActions
 from .preview_dialog import PreviewDialog, ResultDialog
+from .resources import logo_path
 from .widgets import MetricRow
 
 
@@ -47,6 +48,7 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Pudge Gaming Manager")
+        self.setWindowIcon(QIcon(logo_path()))
         self.resize(1180, 760)
         self.setStyleSheet(theme.stylesheet())
 

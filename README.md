@@ -106,15 +106,23 @@ machine.
 ```bash
 .venv/Scripts/python.exe -m pip install pyinstaller
 .venv/Scripts/python.exe -m PyInstaller --noconfirm --clean \
-    --name PudgeGamingManager --onefile --windowed --uac-admin run.py
+    --name PudgeGamingManager --onefile --windowed --uac-admin \
+    --icon pudge_gaming_manager/app/gui/assets/logo.ico \
+    --add-data "pudge_gaming_manager/app/gui/assets;pudge_gaming_manager/app/gui/assets" \
+    run.py
 ```
 
 The result is `dist/PudgeGamingManager.exe`, a single self-contained file.
 `--uac-admin` embeds a manifest requesting elevation, so Windows shows a UAC
 prompt at launch: the executable always runs as administrator, which the
-optimize and Steam-reset actions need. `run.py` is the entry point;
-`PGM_SELFTEST=1` makes it construct the dashboard off-screen and exit, which
-is how a build is smoke-tested without a prompt.
+optimize and Steam-reset actions need. `--icon` sets the file icon Explorer
+and the taskbar show; `--add-data` (Windows separates source from
+destination with `;`) ships `logo.png` at the same relative path it has in
+the source tree, which is where `app/gui/resources.py` looks for it at
+runtime. `run.py` is the entry point; `PGM_SELFTEST=1` makes it construct
+the dashboard off-screen and exit, which is how a build is smoke-tested
+without a prompt -- the selftest asserts the bundled logo loads, so a
+missing asset fails the build instead of shipping a blank window icon.
 
 ---
 

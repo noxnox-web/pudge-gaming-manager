@@ -59,7 +59,7 @@ class ScanWorker(QObject):
 
     def run(self) -> None:
         try:
-            self.progress.emit("Reading hardware and network…")
+            self.progress.emit("Чтение железа и сети…")
             # Independent and both ~3 s, so they run side by side. The
             # network scan never raises; its failures come back as data.
             with ThreadPoolExecutor(max_workers=1) as pool:

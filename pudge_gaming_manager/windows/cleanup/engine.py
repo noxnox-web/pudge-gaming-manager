@@ -41,6 +41,7 @@ from .rules import (
     protected_extensions,
     protected_roots,
     resolve_roots,
+    waived_fragments,
 )
 
 _log = get_logger(__name__)
@@ -56,7 +57,11 @@ class CleanupEngine:
     # -- safety ------------------------------------------------------------
 
     def is_protected(
-        self, path: pathlib.Path, *, allow_user_files: bool = False
+        self,
+        path: pathlib.Path,
+        *,
+        allow_user_files: bool = False,
+        allowed_fragments: frozenset[str] = frozenset(),
     ) -> bool:
         """True when a path must never be deleted.
 
@@ -72,8 +77,13 @@ class CleanupEngine:
                 ``clears_user_files``, so only the credential extensions
                 are refused. The path and root guards still apply in full —
                 this relaxes one layer, never the sandbox itself.
+            allowed_fragments: Protected path fragments the owning category
+                declared it may traverse, for a launcher's own log and
+                cache folders sitting under a protected vendor name.
         """
-        if any(_component_is_protected(part) for part in path.parts):
+        if any(
+            _component_is_protected(part, allowed_fragments) for part in path.parts
+        ):
             return True
         if path.suffix.lower() in protected_extensions(
             allow_user_files=allow_user_files
@@ -142,7 +152,11 @@ class CleanupEngine:
         )
         if not contained:
             return False, "outside its category root"
-        if self.is_protected(path, allow_user_files=category.clears_user_files):
+        if self.is_protected(
+            path,
+            allow_user_files=category.clears_user_files,
+            allowed_fragments=waived_fragments(category),
+        ):
             return False, "protected"
         if stat is None:
             try:
@@ -238,6 +252,11 @@ class CleanupEngine:
         contents as deletable.
         """
         patterns = category.patterns
+        # The walk prunes protected directory names as it goes, so it must
+        # honour the same waiver the approval gate does. Otherwise a
+        # category rooted inside a waived vendor folder would descend into
+        # nothing and silently report itself empty.
+        allowed = waived_fragments(category)
         stack: list[pathlib.Path] = [root]
 
         while stack:
@@ -251,7 +270,9 @@ class CleanupEngine:
                                 if (
                                     category.recursive
                                     and not is_link
-                                    and not _component_is_protected(entry.name)
+                                    and not _component_is_protected(
+                                        entry.name, allowed
+                                    )
                                 ):
                                     stack.append(pathlib.Path(entry.path))
                                 continue
@@ -393,16 +414,26 @@ def _entry_is_junction(entry: os.DirEntry) -> bool:
         return False
 
 
-def _component_is_protected(component: str) -> bool:
+def _component_is_protected(
+    component: str, allowed: frozenset[str] = frozenset()
+) -> bool:
     """Match one path component against the protected-name list.
 
     A component counts as protected when it equals a fragment, or begins
     with it followed by a separator — so ``OneDrive - Contoso`` and
     ``SmartShell Client`` are caught, while ``my-documents-backup`` is not
     mistaken for ``Documents``.
+
+    Args:
+        allowed: Fragments the owning category waived. A component matching
+            one of those passes; every other fragment still applies, so a
+            category that waives "battle.net" gains nothing towards
+            "steamapps".
     """
     lowered = component.lower()
     for fragment in PROTECTED_PATH_FRAGMENTS:
+        if fragment in allowed:
+            continue
         if lowered == fragment:
             return True
         for separator in (" ", "-", "_", "."):

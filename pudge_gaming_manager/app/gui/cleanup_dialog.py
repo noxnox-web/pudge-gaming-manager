@@ -195,13 +195,26 @@ class CleanupResultDialog(QDialog):
         layout.setContentsMargins(24, 22, 24, 20)
         layout.setSpacing(12)
 
-        heading = QLabel(f"Освобождено {result.size_display}")
+        # The headline is the measured figure, not the logical one: it is
+        # the number an operator can check against the drive properties.
+        heading = QLabel(f"На диске освободилось {result.reclaimed_display}")
         heading.setObjectName("Title")
         layout.addWidget(heading)
 
-        subtitle = QLabel(f"Удалено файлов: {result.files.deleted_files}")
+        subtitle = QLabel(
+            f"Удалено файлов: {result.files.deleted_files}, "
+            f"их суммарный размер {result.size_display}."
+        )
         subtitle.setObjectName("Subtitle")
+        subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
+
+        note = result.space_note
+        if note:
+            explanation = QLabel(note)
+            explanation.setObjectName("ScoreNote")
+            explanation.setWordWrap(True)
+            layout.addWidget(explanation)
 
         detail = QListWidget()
         detail.setWordWrap(True)

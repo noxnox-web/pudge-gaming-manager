@@ -196,6 +196,104 @@ CATEGORIES: tuple[CleanupCategory, ...] = (
         min_age_hours=0.0,
         risk=CleanupRisk.LOW,
     ),
+    # -- game launchers ----------------------------------------------------
+    # Each entry names a launcher's own log, cache or installer-payload
+    # directory. None of them names a game: the protected-path guard still
+    # refuses "steamapps", "Epic Games" and the rest, and the two vendors
+    # whose own folder name is itself on that list waive it for their own
+    # subdirectories only.
+    #
+    # Unverified on the target platform: none of these launchers is
+    # installed on the development machine, so the paths come from vendor
+    # layout rather than observation. A launcher that is absent, or whose
+    # layout differs, reports "на этом ПК нет" and clears nothing — it
+    # cannot delete the wrong thing, only find nothing.
+    CleanupCategory(
+        id="cache.launcher.epic",
+        name="Кэш Epic Games Launcher",
+        description="Логи и веб-кэш лаунчера Epic Games. Не игры.",
+        rationale=(
+            "Лаунчер пишет сюда журналы и кэш встроенного браузера "
+            "магазина. Создаётся заново при следующем запуске; сами игры "
+            "лежат в другом месте и защищены списком путей."
+        ),
+        roots=(
+            "%LOCALAPPDATA%\\EpicGamesLauncher\\Saved\\Logs",
+            "%LOCALAPPDATA%\\EpicGamesLauncher\\Saved\\webcache*",
+        ),
+        min_age_hours=0.0,
+        risk=CleanupRisk.LOW,
+    ),
+    CleanupCategory(
+        id="cache.launcher.battlenet",
+        name="Кэш Battle.net",
+        description=(
+            "Кэш, журналы и скачанные установщики Battle.net. Не игры."
+        ),
+        rationale=(
+            "Battle.net держит кэш агента и загруженные пакеты установки "
+            "после того, как игра уже установлена; на клубном ПК это "
+            "несколько гигабайт, которые больше не нужны."
+        ),
+        roots=(
+            "%LOCALAPPDATA%\\Battle.net\\Cache",
+            "%LOCALAPPDATA%\\Battle.net\\Logs",
+            "%PROGRAMDATA%\\Battle.net\\Setup",
+        ),
+        min_age_hours=24.0,
+        risk=CleanupRisk.LOW,
+        # "battle.net" is a protected vendor name so that no category can
+        # reach a game through it. These roots are the launcher's own cache.
+        allowed_path_fragments=("battle.net",),
+    ),
+    CleanupCategory(
+        id="cache.launcher.riot",
+        name="Журналы Riot Client",
+        description="Журналы клиента Riot. Не игры и не настройки.",
+        rationale=(
+            "Текстовые журналы работы клиента. Нужны только при разборе "
+            "конкретного сбоя и растут без ограничения."
+        ),
+        roots=("%LOCALAPPDATA%\\Riot Games\\Riot Client\\Logs",),
+        min_age_hours=24.0,
+        risk=CleanupRisk.LOW,
+        # Same reasoning as Battle.net: the vendor folder is protected, this
+        # one subdirectory under it is a log folder.
+        allowed_path_fragments=("riot games",),
+    ),
+    CleanupCategory(
+        id="cache.launcher.ea",
+        name="Кэш EA App и Origin",
+        description="Кэш и журналы EA Desktop и Origin. Не игры.",
+        rationale=(
+            "Кэш магазина и журналы работы клиента. Создаются заново; "
+            "библиотека игр хранится отдельно."
+        ),
+        roots=(
+            "%LOCALAPPDATA%\\Electronic Arts\\EA Desktop\\Logs",
+            "%LOCALAPPDATA%\\Electronic Arts\\EA Desktop\\cache",
+            "%PROGRAMDATA%\\Electronic Arts\\EA Desktop\\Logs",
+            "%LOCALAPPDATA%\\Origin\\Logs",
+            "%PROGRAMDATA%\\Origin\\Logs",
+        ),
+        min_age_hours=24.0,
+        risk=CleanupRisk.LOW,
+    ),
+    CleanupCategory(
+        id="cache.launcher.ubisoft",
+        name="Кэш Ubisoft Connect",
+        description="Кэш и журналы Ubisoft Connect. Не игры и не сохранения.",
+        rationale=(
+            "Кэш магазина и журналы лаунчера. Облачные сохранения хранятся "
+            "у Ubisoft, а установленные игры — в другом каталоге."
+        ),
+        roots=(
+            "%LOCALAPPDATA%\\Ubisoft Game Launcher\\logs",
+            "%LOCALAPPDATA%\\Ubisoft Game Launcher\\cache",
+        ),
+        min_age_hours=24.0,
+        risk=CleanupRisk.LOW,
+    ),
     # -- the user's own files ----------------------------------------------
     CleanupCategory(
         id="files.downloads",

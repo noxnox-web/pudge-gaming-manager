@@ -33,6 +33,7 @@ from .tweak import Tweak, TweakContext
 from .tweaks.cleanup import CleanTemporaryFilesTweak
 from .tweaks.display import tweaks_for_underperforming_displays
 from .tweaks.power import SetPowerPlanTweak
+from .tweaks.recycle_bin import EmptyRecycleBinTweak
 from .tweaks.windows_old import RemoveWindowsOldTweak
 
 _log = get_logger(__name__)
@@ -167,6 +168,10 @@ class OptimizationPipeline:
         # had its shader caches or crash dumps cleared at all — the cleanup
         # was invisible rather than absent, which is worse.
         tweaks.append(CleanTemporaryFilesTweak(self.cleanup_categories))
+
+        # The Recycle Bin. Self-skips when empty; the preview states the
+        # size and item count before the operator confirms.
+        tweaks.append(EmptyRecycleBinTweak())
 
         # The active power scheme. Self-skips when the target plan is
         # already active, and refuses when this PC does not have it.

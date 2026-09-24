@@ -328,3 +328,74 @@ def test_an_unreachable_bin_is_reported_not_swallowed(
 
     assert not ok
     assert "нет shell32" in detail
+
+
+# -- reporting what was really reclaimed ------------------------------------
+
+
+def test_a_real_run_measures_free_space_before_and_after(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cleaner = _plan_with(tmp_path, monkeypatch)
+    monkeypatch.setattr(recycle_bin, "query", lambda: RecycleBinState())
+
+    plan = cleaner.plan()
+    result = cleaner.run(plan, selected={"test.category"})
+
+    assert result.space.measured
+    assert result.reclaimed_bytes is not None
+
+
+def test_a_dry_run_measures_nothing_and_says_so(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """There is no "after" to compare against, so there is no figure."""
+    cleaner = _plan_with(tmp_path, monkeypatch)
+    monkeypatch.setattr(recycle_bin, "query", lambda: RecycleBinState())
+
+    plan = cleaner.plan()
+    result = cleaner.run(plan, selected={"test.category"}, dry_run=True)
+
+    assert result.reclaimed_bytes is None
+    assert result.reclaimed_display == "не измерено"
+
+
+def test_a_large_shortfall_is_explained_not_hidden() -> None:
+    """Shadow copies are the usual cause and the operator deserves the reason."""
+    from pudge_gaming_manager.core.cleanup.service import DiskCleanupResult
+    from pudge_gaming_manager.utilities.disk_space import FreeSpaceDelta
+    from pudge_gaming_manager.windows.cleanup.report import CleanResult
+
+    result = DiskCleanupResult(
+        files=CleanResult(deleted_files=10, deleted_bytes=10_000_000_000),
+        space=FreeSpaceDelta(before={"C:\\": 0}, after={"C:\\": 1_000_000_000}),
+    )
+
+    assert result.reclaimed_bytes == 1_000_000_000
+    assert "теневые копии" in result.space_note
+
+
+def test_matching_numbers_produce_no_note() -> None:
+    """An explanation nobody needs is noise that buries the real warnings."""
+    from pudge_gaming_manager.core.cleanup.service import DiskCleanupResult
+    from pudge_gaming_manager.utilities.disk_space import FreeSpaceDelta
+    from pudge_gaming_manager.windows.cleanup.report import CleanResult
+
+    result = DiskCleanupResult(
+        files=CleanResult(deleted_files=10, deleted_bytes=1_000_000_000),
+        space=FreeSpaceDelta(before={"C:\\": 0}, after={"C:\\": 1_000_000_000}),
+    )
+
+    assert result.space_note == ""
+
+
+def test_unmeasured_space_says_so_rather_than_claiming_the_logical_total() -> None:
+    from pudge_gaming_manager.core.cleanup.service import DiskCleanupResult
+    from pudge_gaming_manager.windows.cleanup.report import CleanResult
+
+    result = DiskCleanupResult(
+        files=CleanResult(deleted_files=1, deleted_bytes=500)
+    )
+
+    assert result.reclaimed_bytes is None
+    assert "измерить не удалось" in result.space_note

@@ -94,6 +94,21 @@ class CleanupCategory:
     ``.pdf`` there would leave behind exactly what the operator asked to
     clear. Credentials stay protected regardless."""
 
+    allowed_path_fragments: tuple[str, ...] = ()
+    """Protected path fragments this category may traverse.
+
+    PROTECTED_PATH_FRAGMENTS blocks whole vendor directories such as
+    "Battle.net" and "Riot Games" so that no category can reach a game
+    install. That is the right default, and too blunt for a launcher's own
+    log and cache folders, which sit under the same vendor name and are not
+    games.
+
+    A category waives a fragment only by naming it here, and only for
+    itself. The waiver is checked against the category's own roots by test:
+    a category cannot waive a fragment its roots never mention, so this
+    cannot become a general-purpose escape hatch. Containment, the
+    protected roots and the extension guard are untouched."""
+
 
 def _split_at_wildcard(path: pathlib.Path) -> tuple[pathlib.Path, str] | None:
     """Split ``path`` into (fixed anchor, glob pattern) at its first wildcard.
@@ -227,6 +242,11 @@ def protected_roots() -> list[pathlib.Path]:
     return resolved
 
 
+def waived_fragments(category: CleanupCategory) -> frozenset[str]:
+    """The protected fragments this category is allowed to pass through."""
+    return frozenset(f.lower() for f in category.allowed_path_fragments)
+
+
 def protected_extensions(*, allow_user_files: bool = False) -> frozenset[str]:
     """The extension guard that applies to a given category.
 
@@ -249,4 +269,5 @@ __all__ = [
     "protected_extensions",
     "protected_roots",
     "resolve_roots",
+    "waived_fragments",
 ]

@@ -12,7 +12,13 @@ they exist at runtime on every real instance.
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QFileDialog, QMessageBox
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QHBoxLayout,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+)
 
 from ...core import services
 from ...core.profiles.storage import PROFILE_FILENAME
@@ -22,12 +28,76 @@ from . import presenters
 from .cleanup_dialog import CleanupDialog, CleanupResultDialog
 from .profile_dialog import ComparisonDialog
 from .steam_dialog import SteamResetDialog, SteamResultDialog
+from .usage_dialog import StartupDialog, UsageDialog
 
 _log = get_logger(__name__)
 
 
 class ProfileAndGamesActions:
     """Mixin: profile, disk cleanup, Steam reset, startup recovery."""
+
+    # -- construction ------------------------------------------------------
+
+    def _build_actions(self, layout: QVBoxLayout) -> None:
+        """Build the action buttons for the system card.
+
+        Lives here rather than in ``dashboard.py`` so each button sits next
+        to the handler it calls; the dashboard keeps the layout and the
+        scan/optimize lifecycle.
+        """
+        row = QHBoxLayout()
+        self._rescan = QPushButton("Пересканировать")  # type: ignore[attr-defined]
+        self._rescan.setObjectName("Secondary")  # type: ignore[attr-defined]
+        self._rescan.clicked.connect(self._controller.start)  # type: ignore[attr-defined]
+        row.addWidget(self._rescan)  # type: ignore[attr-defined]
+
+        # Golden Profile actions need a scan to capture or compare against.
+        self._save_profile = QPushButton("Сохранить профиль…")  # type: ignore[attr-defined]
+        self._save_profile.setObjectName("Secondary")  # type: ignore[attr-defined]
+        self._save_profile.setEnabled(False)  # type: ignore[attr-defined]
+        self._save_profile.clicked.connect(self._on_save_profile)  # type: ignore[attr-defined]
+        row.addWidget(self._save_profile)  # type: ignore[attr-defined]
+
+        self._compare_profile = QPushButton("Сравнить с профилем…")  # type: ignore[attr-defined]
+        self._compare_profile.setObjectName("Secondary")  # type: ignore[attr-defined]
+        self._compare_profile.setEnabled(False)  # type: ignore[attr-defined]
+        self._compare_profile.clicked.connect(self._on_compare_profile)  # type: ignore[attr-defined]
+        row.addWidget(self._compare_profile)  # type: ignore[attr-defined]
+        layout.addLayout(row)
+
+        tools = QHBoxLayout()
+        # Read-only, so it is a secondary action sitting beside the one
+        # that deletes: an operator looks here first to decide whether the
+        # cleaner is even the right tool for what is filling the disk.
+        self._disk_usage = QPushButton("Что занимает место…")  # type: ignore[attr-defined]
+        self._disk_usage.setObjectName("Secondary")  # type: ignore[attr-defined]
+        self._disk_usage.setEnabled(False)  # type: ignore[attr-defined]
+        self._disk_usage.clicked.connect(self._on_disk_usage)  # type: ignore[attr-defined]
+        tools.addWidget(self._disk_usage)  # type: ignore[attr-defined]
+
+        self._startup = QPushButton("Автозагрузка…")  # type: ignore[attr-defined]
+        self._startup.setObjectName("Secondary")  # type: ignore[attr-defined]
+        self._startup.setEnabled(False)  # type: ignore[attr-defined]
+        self._startup.clicked.connect(self._on_startup)  # type: ignore[attr-defined]
+        tools.addWidget(self._startup)  # type: ignore[attr-defined]
+        layout.addLayout(tools)
+
+        # Disk cleanup stands on its own rather than hiding inside
+        # OPTIMIZE: it is the action an operator reaches for by name, and
+        # it is the only path that offers every category, including the
+        # ones that are off by default.
+        self._clean_disk = QPushButton("ОЧИСТКА ДИСКА")  # type: ignore[attr-defined]
+        self._clean_disk.setObjectName("Primary")  # type: ignore[attr-defined]
+        self._clean_disk.setEnabled(False)  # type: ignore[attr-defined]
+        self._clean_disk.clicked.connect(self._on_clean_disk)  # type: ignore[attr-defined]
+        layout.addWidget(self._clean_disk)  # type: ignore[attr-defined]
+
+        # A club reset: remove every Steam game except those a profile keeps.
+        self._reset_steam = QPushButton("ОЧИСТКА СТИМА")  # type: ignore[attr-defined]
+        self._reset_steam.setObjectName("Secondary")  # type: ignore[attr-defined]
+        self._reset_steam.setEnabled(False)  # type: ignore[attr-defined]
+        self._reset_steam.clicked.connect(self._on_reset_steam)  # type: ignore[attr-defined]
+        layout.addWidget(self._reset_steam)  # type: ignore[attr-defined]
 
     # -- startup -----------------------------------------------------------
 
@@ -67,6 +137,8 @@ class ProfileAndGamesActions:
         self._compare_profile.setEnabled(enabled)  # type: ignore[attr-defined]
         self._reset_steam.setEnabled(enabled)  # type: ignore[attr-defined]
         self._clean_disk.setEnabled(enabled)  # type: ignore[attr-defined]
+        self._disk_usage.setEnabled(enabled)  # type: ignore[attr-defined]
+        self._startup.setEnabled(enabled)  # type: ignore[attr-defined]
 
     def _on_save_profile(self) -> None:
         if self._result is None or self._profiles.busy:  # type: ignore[attr-defined]
@@ -158,6 +230,55 @@ class ProfileAndGamesActions:
         self._status.setText("")  # type: ignore[attr-defined]
         self._set_profile_actions(True)
         QMessageBox.warning(self, "Очистка диска", message)
+
+    # -- disk usage survey -------------------------------------------------
+
+    def _on_disk_usage(self) -> None:
+        """Measure the largest folders. Reads only; deletes nothing."""
+        if self._tools.busy:  # type: ignore[attr-defined]
+            return
+        self._set_profile_actions(False)
+        self._status.setText("Замер занятого места… это занимает до минуты")  # type: ignore[attr-defined]
+        self._tools.start_usage_survey()  # type: ignore[attr-defined]
+
+    def _on_usage_ready(self, report: object) -> None:
+        self._status.setText("")  # type: ignore[attr-defined]
+        self._set_profile_actions(True)
+        UsageDialog(report, self).exec()  # type: ignore[arg-type]
+
+    # -- startup manager ---------------------------------------------------
+
+    def _on_startup(self) -> None:
+        if self._tools.busy:  # type: ignore[attr-defined]
+            return
+        self._set_profile_actions(False)
+        self._status.setText("Чтение автозагрузки…")  # type: ignore[attr-defined]
+        self._tools.start_startup_scan()  # type: ignore[attr-defined]
+
+    def _on_startup_ready(self, entries: object) -> None:
+        self._status.setText("")  # type: ignore[attr-defined]
+        self._set_profile_actions(True)
+
+        dialog = StartupDialog(entries, self)  # type: ignore[arg-type]
+        # The dialog stays open while each toggle round-trips through the
+        # worker, so it is held on the window and the result is routed back
+        # to it rather than being applied optimistically.
+        self._startup_dialog = dialog
+        dialog.connect_toggle(self._on_startup_toggle_requested)
+        dialog.exec()
+        self._startup_dialog = None
+
+    def _on_startup_toggle_requested(self, entry: object, enabled: bool) -> None:
+        self._tools.start_startup_toggle(entry, enabled)  # type: ignore[attr-defined]
+
+    def _on_startup_toggled(self, entry: object) -> None:
+        if self._startup_dialog is not None:
+            self._startup_dialog.apply_result(entry)  # type: ignore[arg-type]
+
+    def _on_tools_failed(self, message: str) -> None:
+        self._status.setText("")  # type: ignore[attr-defined]
+        self._set_profile_actions(True)
+        QMessageBox.warning(self, "Инструменты", message)
 
     # -- steam reset -------------------------------------------------------
 

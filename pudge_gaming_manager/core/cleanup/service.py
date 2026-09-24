@@ -13,8 +13,10 @@ never a permission slip.
 
 from __future__ import annotations
 
+import pathlib
 from dataclasses import dataclass, field
 
+from ...utilities.disk_space import FreeSpaceDelta, drive_of
 from ...utilities.formatting import format_size
 from ...utilities.logging_setup import get_logger
 from ...windows.cleanup import recycle_bin
@@ -70,21 +72,65 @@ class DiskCleanupPlan:
 
 @dataclass(slots=True)
 class DiskCleanupResult:
-    """What a cleanup actually removed."""
+    """What a cleanup actually removed.
+
+    Two numbers, because they are two different facts (rule #40).
+    :attr:`total_bytes` is the logical size of everything deleted.
+    :attr:`reclaimed_bytes` is how much free space the drives really gained,
+    read from the filesystem before and after. Shadow copies, deduplication
+    and cluster rounding make them differ, and the report shows both rather
+    than picking the flattering one.
+    """
 
     files: CleanResult = field(default_factory=CleanResult)
     bin_attempted: bool = False
     bin_emptied: bool = False
     bin_detail: str = ""
     bin_bytes: int = 0
+    space: FreeSpaceDelta = field(default_factory=FreeSpaceDelta)
 
     @property
     def total_bytes(self) -> int:
+        """Logical size of every file removed."""
         return self.files.deleted_bytes + self.bin_bytes
 
     @property
     def size_display(self) -> str:
         return format_size(self.total_bytes)
+
+    @property
+    def reclaimed_bytes(self) -> int | None:
+        """Free space the drives actually gained, or ``None`` if unmeasured."""
+        return self.space.freed_bytes if self.space.measured else None
+
+    @property
+    def reclaimed_display(self) -> str:
+        reclaimed = self.reclaimed_bytes
+        return format_size(reclaimed) if reclaimed is not None else "не измерено"
+
+    @property
+    def space_note(self) -> str:
+        """One line explaining a gap between the two numbers, if there is one.
+
+        Silence when they agree closely: an explanation nobody needs is
+        noise, and noise is what stops the real warnings being read.
+        """
+        reclaimed = self.reclaimed_bytes
+        if reclaimed is None:
+            return (
+                "Свободное место до и после измерить не удалось, поэтому "
+                "показан только суммарный размер удалённого."
+            )
+        shortfall = self.total_bytes - reclaimed
+        if self.total_bytes and shortfall > max(self.total_bytes * 0.1, 64 << 20):
+            return (
+                f"На диске освободилось меньше, чем удалено "
+                f"({format_size(reclaimed)} против {self.size_display}). "
+                "Обычно так бывает, когда часть файлов удерживают теневые "
+                "копии или точки восстановления, либо на том включено "
+                "сжатие или дедупликация."
+            )
+        return ''
 
 
 class DiskCleaner:
@@ -122,6 +168,12 @@ class DiskCleaner:
         """
         result = DiskCleanupResult()
 
+        # Read free space before anything is deleted, on every drive the
+        # selection actually touches. A dry run measures nothing: there is
+        # no "after" to compare against.
+        if not dry_run:
+            result.space.measure_before(self._drives_touched(plan, selected))
+
         chosen = ScanReport(
             categories=[
                 report
@@ -153,13 +205,46 @@ class DiskCleaner:
                     before - (after.size_bytes if after.available else before), 0
                 )
 
+        if not dry_run:
+            result.space.measure_after()
+
         _log.info(
-            "cleanup run: %s in %d files%s",
+            "cleanup run: %s deleted in %d files, %s actually reclaimed%s",
             result.size_display,
             result.files.deleted_files,
+            result.reclaimed_display,
             ", recycle bin emptied" if result.bin_emptied else "",
         )
         return result
+
+    @staticmethod
+    def _drives_touched(plan: DiskCleanupPlan, selected: set[str]) -> set[str]:
+        """Volume roots the selection will delete from.
+
+        Only these are measured. Reading every volume on the machine would
+        fold an unrelated drive's activity into the reported figure.
+        """
+        drives: set[str] = set()
+        for report in plan.scan.categories:
+            if report.category.id not in selected or not report.available:
+                continue
+            for root in report.roots_scanned:
+                anchor = drive_of(root)
+                if anchor:
+                    drives.add(anchor)
+        if RECYCLE_BIN_ID in selected:
+            # SHEmptyRecycleBinW empties every drive's bin, so every drive
+            # that has one can gain space.
+            drives.update(
+                drive_of(root)
+                for report in plan.scan.categories
+                for root in report.roots_scanned
+                if drive_of(root)
+            )
+            system_drive = drive_of(pathlib.Path.home())
+            if system_drive:
+                drives.add(system_drive)
+        return drives
 
 
 __all__ = [

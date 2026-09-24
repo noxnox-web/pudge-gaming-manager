@@ -36,6 +36,7 @@ from ..controllers.cleanup_controller import CleanupController
 from ..controllers.profile_controller import ProfileController
 from ..controllers.scan_controller import ScanController, ScanResult
 from ..controllers.steam_controller import SteamController
+from ..controllers.tools_controller import ToolsController
 from . import presenters, theme, widgets
 from .dashboard_actions import ProfileAndGamesActions
 from .preview_dialog import PreviewDialog, ResultDialog
@@ -59,6 +60,10 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         self._profiles = ProfileController(self)
         self._steam = SteamController(self)
         self._cleanup = CleanupController(self)
+        self._tools = ToolsController(self)
+        # Held only while the startup dialog is open, so a toggle's
+        # result can be routed back to the row that asked for it.
+        self._startup_dialog = None
 
         # Widgets must exist before any signal is bound to them.
         self._build()
@@ -83,6 +88,11 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         self._cleanup.planned.connect(self._on_cleanup_planned)
         self._cleanup.cleaned.connect(self._on_cleanup_finished)
         self._cleanup.failed.connect(self._on_cleanup_failed)
+
+        self._tools.usage_ready.connect(self._on_usage_ready)
+        self._tools.startup_ready.connect(self._on_startup_ready)
+        self._tools.startup_toggled.connect(self._on_startup_toggled)
+        self._tools.failed.connect(self._on_tools_failed)
 
         self._controller.start()
         # After the window is up, report any change a previous run left
@@ -185,42 +195,9 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         layout.addWidget(self._scan_meta)
         layout.addStretch(1)
 
-        buttons = QHBoxLayout()
-        self._rescan = QPushButton("Пересканировать")
-        self._rescan.setObjectName("Secondary")
-        self._rescan.clicked.connect(self._controller.start)
-        buttons.addWidget(self._rescan)
-
-        # Golden Profile actions need a scan to capture or compare against.
-        self._save_profile = QPushButton("Сохранить профиль…")
-        self._save_profile.setObjectName("Secondary")
-        self._save_profile.setEnabled(False)
-        self._save_profile.clicked.connect(self._on_save_profile)
-        buttons.addWidget(self._save_profile)
-
-        self._compare_profile = QPushButton("Сравнить с профилем…")
-        self._compare_profile.setObjectName("Secondary")
-        self._compare_profile.setEnabled(False)
-        self._compare_profile.clicked.connect(self._on_compare_profile)
-        buttons.addWidget(self._compare_profile)
-        layout.addLayout(buttons)
-
-        # Disk cleanup stands on its own rather than hiding inside
-        # OPTIMIZE: it is the action an operator reaches for by name, and
-        # it is the only path that offers every category, including the
-        # ones that are off by default.
-        self._clean_disk = QPushButton("ОЧИСТКА ДИСКА")
-        self._clean_disk.setObjectName("Primary")
-        self._clean_disk.setEnabled(False)
-        self._clean_disk.clicked.connect(self._on_clean_disk)
-        layout.addWidget(self._clean_disk)
-
-        # A club reset: remove every Steam game except those a profile keeps.
-        self._reset_steam = QPushButton("ОЧИСТКА СТИМА")
-        self._reset_steam.setObjectName("Secondary")
-        self._reset_steam.setEnabled(False)
-        self._reset_steam.clicked.connect(self._on_reset_steam)
-        layout.addWidget(self._reset_steam)
+        # The action buttons are built by the mixin that handles them, so
+        # a button and its handler stay in one file as the set grows.
+        self._build_actions(layout)
         return card
 
     def _build_score(self) -> QFrame:
@@ -477,4 +454,5 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         self._profiles.shutdown()
         self._steam.shutdown()
         self._cleanup.shutdown()
+        self._tools.shutdown()
         super().closeEvent(event)

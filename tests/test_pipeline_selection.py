@@ -15,6 +15,9 @@ from pudge_gaming_manager.core.optimization.tweaks.cleanup import (
     CleanTemporaryFilesTweak,
 )
 from pudge_gaming_manager.core.optimization.tweaks.power import SetPowerPlanTweak
+from pudge_gaming_manager.core.optimization.tweaks.recycle_bin import (
+    EmptyRecycleBinTweak,
+)
 from pudge_gaming_manager.core.optimization.tweaks.windows_old import (
     RemoveWindowsOldTweak,
 )
@@ -128,3 +131,62 @@ def test_the_cleanup_tweak_stays_auto_applicable(
     )
 
     assert cleanup.risk.auto_applicable
+
+
+def test_the_recycle_bin_is_offered_by_optimize(
+    pipeline: OptimizationPipeline,
+) -> None:
+    """It was only reachable from the cleanup button, which was inconsistent.
+
+    OPTIMIZE PC reclaims disk space; the bin is disk space. Leaving it out
+    meant two buttons that both say "free up space" disagreed about what
+    that includes.
+    """
+    tweaks = pipeline.build_tweaks(_snapshot(disks=(_roomy_disk(),)))
+
+    assert EmptyRecycleBinTweak.id in _ids(tweaks)
+
+
+def test_every_offered_tweak_is_auto_applicable(
+    pipeline: OptimizationPipeline,
+) -> None:
+    """The pipeline runs with allow_risk_above_low=False.
+
+    A MEDIUM tweak in this list is not "extra safe" — it is silently
+    dropped before the operator ever sees the row, which is a feature that
+    looks present in the code and is absent in the product.
+    """
+    for tweak in pipeline.build_tweaks(_snapshot(disks=(_roomy_disk(),))):
+        assert tweak.risk.auto_applicable, tweak.id
+
+
+def test_an_empty_recycle_bin_reports_no_change_rather_than_vanishing(
+    pipeline: OptimizationPipeline, monkeypatch
+) -> None:
+    from pudge_gaming_manager.core.optimization.tweak import TweakContext
+    from pudge_gaming_manager.windows.cleanup import recycle_bin
+    from pudge_gaming_manager.windows.cleanup.recycle_bin import RecycleBinState
+
+    monkeypatch.setattr(recycle_bin, "query", lambda: RecycleBinState())
+    state = EmptyRecycleBinTweak().scan(TweakContext())
+
+    assert not state.needs_change
+    assert "пуста" in state.summary
+
+
+def test_an_unreadable_recycle_bin_is_refused_not_guessed(monkeypatch) -> None:
+    from pudge_gaming_manager.core.optimization.tweak import TweakContext
+    from pudge_gaming_manager.windows.cleanup import recycle_bin
+    from pudge_gaming_manager.windows.cleanup.recycle_bin import RecycleBinState
+
+    monkeypatch.setattr(
+        recycle_bin,
+        "query",
+        lambda: RecycleBinState(available=False, unavailable_reason="нет доступа"),
+    )
+    tweak = EmptyRecycleBinTweak()
+    ctx = TweakContext()
+    state = tweak.scan(ctx)
+
+    assert not state.needs_change
+    assert not tweak.validate(ctx, state).ok

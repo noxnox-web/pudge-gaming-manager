@@ -145,7 +145,9 @@ missing asset fails the build instead of shipping a blank window icon.
 | `PowerManager` | Locale-independent `powercfg` parsing (GUID + `*` marker) |
 | `SetPowerPlanTweak` | Switches the active scheme to High Performance; **verified apply/rollback on real hardware**. Offered by `OPTIMIZE PC`, and self-skips when that scheme is already active or absent |
 | `SetRefreshRateTweak` | Raises a display to its maximum refresh rate at the current resolution |
-| Cleanup engine | Allowlisted cleanup across 15 categories — temp files, shader caches, crash dumps, servicing logs, six browsers' page caches (per-profile, via wildcard roots) and the Downloads folder — plus the Recycle Bin through `SHEmptyRecycleBinW`. Five safety layers; counted in the preview before anything is deleted and marked irreversible in the UI |
+| Cleanup engine | Allowlisted cleanup across 20 categories — temp files, shader caches, crash dumps, servicing logs, six browsers' page caches (per-profile, via wildcard roots), five game launchers' caches and logs, and the Downloads folder — plus the Recycle Bin through `SHEmptyRecycleBinW`. Five safety layers, two narrow and individually-tested waivers; counted in the preview before anything is deleted and marked irreversible in the UI |
+| Disk usage survey | Read-only. Reports the largest folders at a fixed depth under the profile, ProgramData, both Program Files and Windows, with a per-root time budget and an explicit "partial" flag. Deletes nothing: it exists to answer what the cleaner's allowlist deliberately says nothing about |
+| Startup manager | Lists `Run`/`RunOnce` entries (HKCU, HKLM, 32-bit view) and both Startup folders with their enabled state, and toggles them through the `StartupApproved` flag Task Manager writes. Nothing is deleted, the change is reversible, and the state is read back from the registry rather than assumed. PGM never writes to a `Run` key — the allowlist still refuses them |
 | `OptimizationPipeline` | Scan findings -> tweaks -> preview -> apply -> rescan, with a before/after report |
 | `RegistryManager` / `ServiceManager` | Allowlist matched per path segment and per hive; `Services` and `Run` keys deliberately excluded. Type-preserving backups, protected-service list. Not yet used by any tweak |
 | Network diagnostics | Physical uplink (cable/Wi-Fi, negotiated speed, duplex) kept apart from the path Windows actually routes through, so a VPN is reported as a VPN and never as the network card. Router and internet latency, loss and jitter via `IcmpSendEcho` — no admin rights, no parsing of translated `ping.exe` output. Runs beside the hardware scan |
@@ -155,7 +157,7 @@ missing asset fails the build instead of shipping a blank window icon.
 | Issue detection | Findings carry severity, remedy and threshold provenance |
 | Dashboard GUI | PySide6 dark theme; scan, optimize, profile, cleanup and Steam-reset work run on worker threads; score explainer; **ОЧИСТКА ДИСКА / ОЧИСТКА СТИМА / Save as profile… / Compare with profile…**. A write in progress (apply, wipe or cleanup) blocks the window from closing |
 
-**476 tests passing**, plus one opt-in live test that changes and restores
+**522 tests passing**, plus one opt-in live test that changes and restores
 the active power plan (`PGM_LIVE_SYSTEM_TESTS=1`).
 
 ### Running it
@@ -166,15 +168,15 @@ the active power plan (`PGM_LIVE_SYSTEM_TESTS=1`).
 
 ### Not yet built
 
-Startup manager · Process analyzer · DNS diagnostics ·
-Windows repair (SFC/DISM) · Self-healing · **Restore Golden Profile** ·
-Per-game tuning profiles · Session mode · Benchmark · Maintenance agent ·
-Installer
+Process analyzer · DNS diagnostics · Windows repair (SFC/DISM) ·
+Self-healing · **Restore Golden Profile** · Per-game tuning profiles ·
+Session mode · Benchmark · Maintenance agent · Installer
 
-**`OPTIMIZE PC`** offers four things: raising a display to its maximum
+**`OPTIMIZE PC`** offers five things: raising a display to its maximum
 refresh rate at the current resolution, clearing the default cleanup
-categories, switching the active power scheme to High Performance, and (on
-Windows 11) removing the `Windows.old` upgrade-rollback folder when present.
+categories, emptying the Recycle Bin, switching the active power scheme to
+High Performance, and (on Windows 11) removing the `Windows.old`
+upgrade-rollback folder when present.
 Each one self-skips when it is already correct or inapplicable, and the
 preview says so rather than omitting the row. It does not act on Golden
 Profile drift: comparing against a profile is read-only, rows PGM has a
@@ -186,8 +188,26 @@ window does not pretend otherwise.
 category plus the Recycle Bin and lets the operator tick what goes. Two
 categories start unticked: the Windows servicing logs, which are wanted when
 a failed update is being diagnosed, and the Downloads folder, which holds
-the user's own files. Browser caches are on by default — they name cache
-directories only, so nobody is signed out.
+the user's own files. Browser and launcher caches are on by default — they
+name cache and log directories only, so nobody is signed out and no game is
+touched.
+
+The result reports **two** numbers, because they are two different facts:
+the logical size of everything deleted, and how much free space the drives
+actually gained, read before and after. Shadow copies, deduplication and
+cluster rounding make them differ, and when the gap is large the report says
+which of those is the likely cause instead of quietly showing the flattering
+number.
+
+**`Что занимает место…`** is read-only and deletes nothing. The cleaner works
+from an allowlist so it can never remove something nobody listed; the price
+is that it says nothing about the 200 GB in a folder no category names. This
+answers that and leaves the decision to a person.
+
+**`Автозагрузка…`** lists what Windows launches at sign-in and turns entries
+on or off the way Task Manager does — by writing the `StartupApproved` flag,
+never by deleting the entry. Disabling is reversible, and Task Manager shows
+the same state afterwards.
 
 The profile comparison checks hardware, power plan and display. The schema
 also accepts `cleanup` and `services` sections; those are validated but not
@@ -241,6 +261,13 @@ as disconnected.
 display API; would require vendor libraries.
 
 ### Unverified on the target platform
+
+Launcher and browser cache categories are written from vendor layout rather
+than from observation on every product. On the development machine the Epic,
+Riot and EA categories were confirmed to find real files, and Chrome and Edge
+likewise; Battle.net, Ubisoft Connect, Opera, Firefox, Yandex and Brave were
+not installed and report "на этом ПК нет". A category whose layout differs
+finds nothing — it cannot delete the wrong thing, only come up empty.
 
 The development machine is **Windows 10 Pro 19045** with no club software
 installed. The following are implemented from documentation and have **not**

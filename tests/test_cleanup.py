@@ -20,7 +20,11 @@ from pudge_gaming_manager.windows.cleanup.categories import (
     CATEGORIES,
     default_categories,
 )
-from pudge_gaming_manager.windows.cleanup.rules import CleanupCategory, CleanupRisk
+from pudge_gaming_manager.windows.cleanup.rules import (
+    CleanupCategory,
+    CleanupRisk,
+    waived_fragments,
+)
 
 windows_only = pytest.mark.skipif(os.name != "nt", reason="Windows-only behaviour")
 
@@ -351,13 +355,58 @@ def test_browser_rules_exclude_cookies_and_logins() -> None:
 
 
 def test_no_shipped_category_points_at_a_protected_root() -> None:
+    """Each category's own roots must survive its own guard.
+
+    A category whose root is refused finds nothing and reports itself
+    empty, which looks identical to "already clean" and is the worst
+    failure mode available.
+    """
     engine = CleanupEngine(())
     for category in CATEGORIES:
+        allowed = waived_fragments(category)
         for root in category.roots:
             expanded = pathlib.Path(os.path.expandvars(root))
             if "%" in str(expanded):
                 continue
-            assert not engine.is_protected(expanded), f"{category.id} -> {expanded}"
+            assert not engine.is_protected(
+                expanded,
+                allow_user_files=category.clears_user_files,
+                allowed_fragments=allowed,
+            ), f"{category.id} -> {expanded}"
+
+
+def test_a_waiver_must_be_justified_by_the_category_own_roots() -> None:
+    """A category cannot waive a fragment its roots never mention.
+
+    This is what keeps ``allowed_path_fragments`` from becoming a general
+    escape hatch: waiving "steamapps" from a launcher-log category would
+    fail here, because none of its roots contains that name.
+    """
+    for category in CATEGORIES:
+        joined = " ".join(category.roots).lower()
+        for fragment in category.allowed_path_fragments:
+            assert fragment.lower() in joined, (
+                f"{category.id} waives {fragment!r}, which none of its "
+                f"roots names"
+            )
+
+
+def test_a_waiver_does_not_unlock_the_other_fragments() -> None:
+    """Waiving one vendor name leaves every other guard in place."""
+    engine = CleanupEngine(())
+    steam_path = pathlib.Path(r"C:\Games\steamapps\common\Dota 2\game.dat")
+
+    assert engine.is_protected(steam_path, allowed_fragments=frozenset({"battle.net"}))
+    assert engine.is_protected(
+        pathlib.Path(r"C:\Users\x\Documents\notes.txt"),
+        allowed_fragments=frozenset({"riot games"}),
+    )
+
+
+def test_only_launcher_categories_waive_a_path_fragment() -> None:
+    """No category picks up a waiver by accident."""
+    waiving = {c.id for c in CATEGORIES if c.allowed_path_fragments}
+    assert waiving == {"cache.launcher.battlenet", "cache.launcher.riot"}
 
 
 # -- formatting ------------------------------------------------------------

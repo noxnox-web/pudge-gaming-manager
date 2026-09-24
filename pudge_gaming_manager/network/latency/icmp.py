@@ -34,9 +34,9 @@ _IP_SUCCESS = 0
 UNROUTABLE_CANARY = "192.0.2.1"
 
 _FABRICATED_REPLIES = (
-    "something on this PC answers ping itself (a reply came back from "
-    f"{UNROUTABLE_CANARY}, which is unroutable). VPN and tunnel software "
-    "commonly does this, so round-trip times on this path are not real."
+    "что-то на этом ПК само отвечает на ping (пришёл ответ от "
+    f"{UNROUTABLE_CANARY}, который не маршрутизируется). Так часто делают "
+    "VPN и туннели, поэтому задержки на этом пути ненастоящие."
 )
 
 _PAYLOAD = b"PudgeGamingManager-latency-probe"

@@ -54,7 +54,7 @@ def test_missing_executable_raises_actionable_error() -> None:
     assert "pgm-no-such-program-xyz" in error.what
     # Rule #36: the user is told what to do, not shown a traceback.
     assert error.remedy
-    assert "Reason:" in error.user_message()
+    assert "Причина:" in error.user_message()
 
 
 def test_try_run_returns_none_for_missing_program() -> None:

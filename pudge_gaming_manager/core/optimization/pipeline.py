@@ -85,36 +85,36 @@ class OptimizationOutcome:
 
     def report_lines(self) -> list[str]:
         lines = [
-            f"Applied: {self.run.applied}",
-            f"Failed: {self.run.failed}",
-            f"Rolled back: {self.run.rolled_back}",
+            f"Применено: {self.run.applied}",
+            f"Ошибок: {self.run.failed}",
+            f"Откачено: {self.run.rolled_back}",
             "",
-            f"Gaming score before: {self.score_before.display()}",
+            f"Оценка до: {self.score_before.display()}",
         ]
         if self.score_after is not None:
-            lines.append(f"Gaming score after:  {self.score_after.display()}")
+            lines.append(f"Оценка после: {self.score_after.display()}")
             delta = self.score_delta
             if delta is not None:
-                lines.append(f"Change: {delta:+.0f}")
+                lines.append(f"Изменение: {delta:+.0f}")
         # The dashboard score includes the network; these do not, so they
         # can differ from it. Optimizing never re-measures the network, and
         # counting the old measurement as the "after" state would report a
         # value nobody measured.
         lines.append(
-            "Both scores cover hardware only; the network is not re-measured "
-            "after optimizing, so it is left out of the comparison."
+            "Обе оценки — только по железу; сеть после оптимизации не "
+            "измеряется заново и в сравнение не входит."
         )
         lines.append("")
         lines.append(
-            "A changed setting is a verified configuration change, not a "
-            "measured performance gain."
+            "Изменённая настройка — это проверенное изменение конфигурации, "
+            "а не измеренный прирост производительности."
         )
         for result in self.run.results:
             if result.outcome.value in {"SUCCESS", "FAILED", "ROLLED_BACK"}:
                 lines.append(f"  [{result.outcome.value}] {result.name}: {result.detail}")
         if self.run.needs_restart:
             lines.append("")
-            lines.append("A restart is required for some changes to take full effect.")
+            lines.append("Для полного применения части изменений нужна перезагрузка.")
         return lines
 
 
@@ -209,7 +209,7 @@ class OptimizationPipeline:
 
         outcome = OptimizationOutcome(run=run, score_before=preview.score_before)
         if dry_run:
-            outcome.notes.append("Dry run: nothing was changed.")
+            outcome.notes.append("Пробный прогон: ничего не изменено.")
             return outcome
 
         if callable(rescan):
@@ -223,11 +223,11 @@ class OptimizationPipeline:
                 # better than reporting a stale score as the new one.
                 _log.exception("post-optimization rescan failed")
                 outcome.notes.append(
-                    f"The after-state could not be measured: {exc}"
+                    f"Состояние «после» не удалось измерить: {exc}"
                 )
         else:
             outcome.notes.append(
-                "No rescan was performed, so no after-state is reported."
+                "Повторное сканирование не выполнялось, состояние «после» не показано."
             )
         return outcome
 

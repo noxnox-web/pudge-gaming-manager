@@ -48,7 +48,7 @@ def signout_targets(install: SteamInstall) -> list[CacheTarget]:
             size += (dir_size(child) or 0) if child.is_dir() else _file_size(child)
         targets.append(
             CacheTarget(
-                config, "config — account list, sign-in history (Steam)", size,
+                config, "config — список аккаунтов и история входов (Steam)", size,
                 mode=ClearMode.CONTENTS, keep_names=CONFIG_KEEP,
             )
         )
@@ -64,14 +64,14 @@ def signout_targets(install: SteamInstall) -> list[CacheTarget]:
         if tokens.is_file():
             targets.append(
                 CacheTarget(
-                    tokens, f"saved sign-in tokens ({user})", _file_size(tokens),
+                    tokens, f"сохранённые токены входа ({user})", _file_size(tokens),
                     mode=ClearMode.FILE,
                 )
             )
         web = steam / "htmlcache"
         if web.is_dir():
             targets.append(
-                CacheTarget(web, f"Steam web cookies ({user})", dir_size(web))
+                CacheTarget(web, f"веб-куки Steam ({user})", dir_size(web))
             )
     return targets
 

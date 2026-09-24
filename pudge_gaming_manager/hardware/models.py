@@ -111,9 +111,9 @@ class Threshold:
     def describe(self) -> str:
         """Human-readable provenance, shown next to the value."""
         label = {
-            ThresholdKind.VENDOR: "vendor limit",
-            ThresholdKind.HEURISTIC: "heuristic",
-            ThresholdKind.DERIVED: "derived",
+            ThresholdKind.VENDOR: "предел производителя",
+            ThresholdKind.HEURISTIC: "эвристика",
+            ThresholdKind.DERIVED: "вычислено",
         }[self.kind]
         return f"{label}: {self.source}" if self.source else label
 

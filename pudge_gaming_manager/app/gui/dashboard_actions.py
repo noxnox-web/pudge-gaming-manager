@@ -47,10 +47,11 @@ class ProfileAndGamesActions:
         body = "\n".join(f"• {c.line()}" for c in changes)
         QMessageBox.warning(
             self,
-            "Interrupted changes",
-            "Pudge Gaming Manager was closed or crashed while changing these "
-            "settings, so they were never verified. Each may be half-applied. "
-            "Check them and restore the original value by hand if needed:\n\n"
+            "Прерванные изменения",
+            "Программа была закрыта или аварийно завершилась во время "
+            "изменения этих настроек, поэтому они не были подтверждены. "
+            "Возможно, применены частично. Проверьте и при необходимости "
+            "верните исходное значение вручную:\n\n"
             f"{body}",
         )
         try:
@@ -69,13 +70,13 @@ class ProfileAndGamesActions:
         if self._result is None or self._profiles.busy:  # type: ignore[attr-defined]
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save this PC as a Golden Profile", PROFILE_FILENAME,
-            "Golden Profile (*.json)",
+            self, "Сохранить этот ПК как профиль", PROFILE_FILENAME,
+            "Профиль (*.json)",
         )
         if not path:
             return
         self._set_profile_actions(False)
-        self._status.setText("Saving profile…")  # type: ignore[attr-defined]
+        self._status.setText("Сохранение профиля…")  # type: ignore[attr-defined]
         self._profiles.start_save(  # type: ignore[attr-defined]
             self._result.snapshot, path,  # type: ignore[attr-defined]
             presenters.profile_name_from_path(path),
@@ -85,18 +86,18 @@ class ProfileAndGamesActions:
         if self._result is None or self._profiles.busy:  # type: ignore[attr-defined]
             return
         path, _ = QFileDialog.getOpenFileName(
-            self, "Compare with a Golden Profile", "", "Golden Profile (*.json)"
+            self, "Сравнить с профилем", "", "Профиль (*.json)"
         )
         if not path:
             return
         self._set_profile_actions(False)
-        self._status.setText("Comparing with profile…")  # type: ignore[attr-defined]
+        self._status.setText("Сравнение с профилем…")  # type: ignore[attr-defined]
         self._profiles.start_compare(self._result.snapshot, path)  # type: ignore[attr-defined]
 
     def _on_profile_saved(self, path: object) -> None:
         self._status.setText("")  # type: ignore[attr-defined]
         self._set_profile_actions(True)
-        QMessageBox.information(self, "Profile saved", f"Saved to {path}")
+        QMessageBox.information(self, "Профиль сохранён", f"Сохранено в {path}")
 
     def _on_profile_compared(self, result: object) -> None:
         self._status.setText("")  # type: ignore[attr-defined]
@@ -106,7 +107,7 @@ class ProfileAndGamesActions:
     def _on_profile_failed(self, message: str) -> None:
         self._status.setText("")  # type: ignore[attr-defined]
         self._set_profile_actions(True)
-        QMessageBox.warning(self, "Golden Profile", message)
+        QMessageBox.warning(self, "Профиль", message)
 
     # -- steam reset -------------------------------------------------------
 
@@ -120,7 +121,7 @@ class ProfileAndGamesActions:
         if self._steam.busy:  # type: ignore[attr-defined]
             return
         self._set_profile_actions(False)
-        self._status.setText("Planning Steam reset…")  # type: ignore[attr-defined]
+        self._status.setText("Подготовка очистки Стима…")  # type: ignore[attr-defined]
         self._steam.start_plan()  # type: ignore[attr-defined]
 
     def _on_steam_planned(self, plan: object) -> None:
@@ -128,8 +129,8 @@ class ProfileAndGamesActions:
         self._set_profile_actions(True)
         if plan is None:
             QMessageBox.information(
-                self, "Steam reset",
-                "Steam is not installed on this PC, so there is nothing to reset.",
+                self, "Очистка Стима",
+                "Steam на этом ПК не установлен — очищать нечего.",
             )
             return
         dialog = SteamResetDialog(plan, self)  # type: ignore[arg-type]
@@ -138,7 +139,7 @@ class ProfileAndGamesActions:
         # Games the operator unticked are moved back to keep.
         confirmed = dialog.confirmed_plan()
         self._set_profile_actions(False)
-        self._status.setText("Removing games…")  # type: ignore[attr-defined]
+        self._status.setText("Удаление игр…")  # type: ignore[attr-defined]
         self._steam.start_wipe(confirmed)  # type: ignore[attr-defined]
 
     def _on_steam_wiped(self, result: object) -> None:
@@ -149,4 +150,4 @@ class ProfileAndGamesActions:
     def _on_steam_failed(self, message: str) -> None:
         self._status.setText("")  # type: ignore[attr-defined]
         self._set_profile_actions(True)
-        QMessageBox.warning(self, "Steam reset", message)
+        QMessageBox.warning(self, "Очистка Стима", message)

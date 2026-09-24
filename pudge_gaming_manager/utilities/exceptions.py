@@ -40,9 +40,9 @@ class PgmError(Exception):
         """Render the failure as the operator should see it."""
         lines = [self.what if self.what.endswith((".", "!", "?")) else f"{self.what}."]
         if self.reason:
-            lines.append(f"\nReason:   {self.reason}")
+            lines.append(f"\nПричина:  {self.reason}")
         if self.remedy:
-            lines.append(f"Required: {self.remedy}")
+            lines.append(f"Нужно:    {self.remedy}")
         return "\n".join(lines)
 
     def to_dict(self) -> dict[str, Any]:

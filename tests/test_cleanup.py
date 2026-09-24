@@ -350,7 +350,7 @@ def test_no_shipped_category_points_at_a_protected_root() -> None:
 
 @pytest.mark.parametrize(
     ("value", "expected"),
-    [(0, "0 B"), (512, "512 B"), (2048, "2.0 KB"), (5 * 1024**3, "5.0 GB")],
+    [(0, "0 Б"), (512, "512 Б"), (2048, "2.0 КБ"), (5 * 1024**3, "5.0 ГБ")],
 )
 def test_size_formatting(value: int, expected: str) -> None:
     assert format_size(value) == expected

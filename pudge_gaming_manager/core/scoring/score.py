@@ -69,7 +69,7 @@ class GamingScore:
         return sum(c.weight for c in self.components if c.available)
 
     def display(self) -> str:
-        return f"{self.value:.0f} / 100" if self.value is not None else "UNAVAILABLE"
+        return f"{self.value:.0f} / 100" if self.value is not None else "НЕТ ДАННЫХ"
 
     def formula_lines(self) -> list[str]:
         """The arithmetic, for display in the UI (rule #30)."""
@@ -77,7 +77,7 @@ class GamingScore:
         total = self.effective_weight
         for component in self.components:
             if not component.available:
-                lines.append(f"{component.label}: excluded — {component.explanation}")
+                lines.append(f"{component.label}: исключено — {component.explanation}")
                 continue
             share = (component.weight / total * 100) if total else 0
             lines.append(
@@ -86,8 +86,8 @@ class GamingScore:
             )
         if self.excluded:
             lines.append(
-                "Excluded inputs are not counted as zero; the remaining "
-                "weights are rescaled to 100%."
+                "Недоступные входы не считаются нулём; оставшиеся веса "
+                "масштабируются до 100%."
             )
         return lines
 
@@ -104,23 +104,23 @@ def score_cpu(snapshot: HardwareSnapshot, weight: float) -> Component:
     """
     utilization = snapshot.cpu.utilization_percent.value
     if utilization is None:
-        return Component("cpu", "CPU", None, weight, "utilization not readable")
+        return Component("cpu", "ЦП", None, weight, "загрузка не читается")
     # 0% busy -> 100. 80%+ busy at idle is a real problem -> near 0.
     value = _clamp(100.0 - (utilization / 80.0) * 100.0)
     return Component(
-        "cpu", "CPU", value, weight,
-        f"{utilization:.0f}% busy (heuristic: 80%+ at idle scores 0)",
+        "cpu", "ЦП", value, weight,
+        f"{utilization:.0f}% загрузки (эвристика: 80%+ в простое = 0)",
     )
 
 
 def score_ram(snapshot: HardwareSnapshot, weight: float) -> Component:
     usage = snapshot.ram.usage_percent.value
     if usage is None:
-        return Component("ram", "Memory", None, weight, "usage not readable")
+        return Component("ram", "Память", None, weight, "использование не читается")
     value = _clamp(100.0 - (usage - 40.0) * (100.0 / 50.0)) if usage > 40 else 100.0
     return Component(
-        "ram", "Memory", value, weight,
-        f"{usage:.0f}% in use (heuristic: 90%+ scores 0)",
+        "ram", "Память", value, weight,
+        f"{usage:.0f}% занято (эвристика: 90%+ = 0)",
     )
 
 
@@ -132,50 +132,50 @@ def score_storage(snapshot: HardwareSnapshot, weight: float) -> Component:
     """
     disk = snapshot.system_disk
     if disk is None or disk.free_percent.value is None:
-        return Component("storage", "Storage", None, weight, "no readable system disk")
+        return Component("storage", "Хранилище", None, weight, "системный диск не читается")
 
     free = disk.free_percent.value
     # 20% free is the common guidance floor; below 10% is trouble.
     space_score = _clamp((free - 5.0) * (100.0 / 20.0))
-    detail = f"{free:.0f}% free"
+    detail = f"{free:.0f}% свободно"
 
     if disk.media_type == "HDD":
         # A mechanical system disk is a genuine handicap for load times.
         space_score = min(space_score, 60.0)
-        detail += ", mechanical system disk"
+        detail += ", механический системный диск"
     elif disk.media_type == "SSD":
         detail += ", SSD"
 
     if disk.smart_healthy.value is False:
         space_score = 0.0
-        detail += ", SMART reports a problem"
+        detail += ", SMART сообщает о проблеме"
 
-    return Component("storage", "Storage", space_score, weight,
-                     f"{detail} (heuristic: 25%+ free scores 100)")
+    return Component("storage", "Хранилище", space_score, weight,
+                     f"{detail} (эвристика: 25%+ свободно = 100)")
 
 
 def score_display(snapshot: HardwareSnapshot, weight: float) -> Component:
     """Score displays on whether they run at their achievable refresh rate."""
     monitors = [m for m in snapshot.monitors if m.current_mode]
     if not monitors:
-        return Component("display", "Display", None, weight, "no display detected")
+        return Component("display", "Дисплей", None, weight, "монитор не найден")
 
     penalised: list[str] = []
     for monitor in monitors:
         if monitor.is_running_below_capability:
             best = monitor.max_refresh_at_current_resolution.value
             penalised.append(
-                f"{monitor.current_mode.refresh_hz} Hz of {best} Hz"  # type: ignore[union-attr]
+                f"{monitor.current_mode.refresh_hz} Гц из {best} Гц"  # type: ignore[union-attr]
             )
 
     if not penalised:
-        rates = ", ".join(f"{m.current_mode.refresh_hz} Hz" for m in monitors)  # type: ignore[union-attr]
-        return Component("display", "Display", 100.0, weight,
-                         f"running at maximum ({rates})")
+        rates = ", ".join(f"{m.current_mode.refresh_hz} Гц" for m in monitors)  # type: ignore[union-attr]
+        return Component("display", "Дисплей", 100.0, weight,
+                         f"на максимуме ({rates})")
 
     value = _clamp(100.0 - 50.0 * len(penalised))
-    return Component("display", "Display", value, weight,
-                     "below capability: " + "; ".join(penalised))
+    return Component("display", "Дисплей", value, weight,
+                     "ниже возможностей: " + "; ".join(penalised))
 
 
 def score_gpu(snapshot: HardwareSnapshot, weight: float) -> Component:
@@ -188,17 +188,17 @@ def score_gpu(snapshot: HardwareSnapshot, weight: float) -> Component:
     """
     gpu = snapshot.primary_gpu
     if gpu is None:
-        return Component("gpu", "GPU", None, weight, "no GPU detected")
+        return Component("gpu", "ГП", None, weight, "видеокарта не найдена")
 
     vram = gpu.vram_total_mb.value
     if vram is None:
         return Component(
-            "gpu", "GPU", None, weight, "VRAM and telemetry both unreadable"
+            "gpu", "ГП", None, weight, "видеопамять и телеметрия не читаются"
         )
 
     # 8 GB is a reasonable floor for current competitive titles at 1080p.
     value = _clamp((vram / 8192.0) * 100.0)
-    notes = [f"{vram // 1024} GB VRAM"]
+    notes = [f"{vram // 1024} ГБ видеопамяти"]
 
     threshold = gpu.temperature_threshold
     temperature = gpu.temperature_c.value
@@ -210,25 +210,25 @@ def score_gpu(snapshot: HardwareSnapshot, weight: float) -> Component:
         elif status is HealthStatus.WARNING:
             value = min(value, 60.0)
     else:
-        notes.append("temperature unavailable")
+        notes.append("температура недоступна")
 
     if gpu.thermal_throttling:
         value = min(value, 25.0)
-        notes.append("thermally throttling now")
+        notes.append("тепловой троттлинг сейчас")
     elif gpu.power_throttling:
         value = min(value, 70.0)
-        notes.append("power-limited now")
+        notes.append("ограничение по питанию сейчас")
 
-    return Component("gpu", "GPU", value, weight, ", ".join(notes))
+    return Component("gpu", "ГП", value, weight, ", ".join(notes))
 
 
 def score_system(snapshot: HardwareSnapshot, weight: float) -> Component:
     """Penalise problems the scan itself encountered."""
     if snapshot.warnings:
         value = _clamp(100.0 - 25.0 * len(snapshot.warnings))
-        return Component("system", "System", value, weight,
-                         f"{len(snapshot.warnings)} scan warning(s)")
-    return Component("system", "System", 100.0, weight, "scan completed cleanly")
+        return Component("system", "Система", value, weight,
+                         f"предупреждений сканирования: {len(snapshot.warnings)}")
+    return Component("system", "Система", 100.0, weight, "сканирование без замечаний")
 
 
 def score_network(network: NetworkSnapshot | None, weight: float) -> Component:
@@ -239,24 +239,24 @@ def score_network(network: NetworkSnapshot | None, weight: float) -> Component:
     ICMP filter) contributes nothing either way rather than a guess.
     """
     if network is None:
-        return Component("network", "Network", None, weight, "network was not scanned")
+        return Component("network", "Сеть", None, weight, "сеть не сканировалась")
     if network.unavailable_reason:
-        return Component("network", "Network", None, weight, network.unavailable_reason)
+        return Component("network", "Сеть", None, weight, network.unavailable_reason)
     if not network.connected:
-        return Component("network", "Network", 0.0, weight, "no network connection")
+        return Component("network", "Сеть", 0.0, weight, "нет сетевого подключения")
 
     value = 100.0
     notes: list[str] = []
     uplink = network.uplink
     if uplink is not None:
         speed = uplink.link_speed_mbps
-        notes.append(f"{uplink.kind_label}" + (f" {speed} Mbps" if speed else ""))
+        notes.append(f"{uplink.kind_label}" + (f" {speed} Мбит/с" if speed else ""))
         if uplink.kind is LinkKind.WIRELESS:
             value -= 20
             notes.append("Wi-Fi -20")
         elif uplink.kind is LinkKind.WIRED and speed is not None and speed < 1000:
             value -= 20
-            notes.append("below gigabit -20")
+            notes.append("ниже гигабита -20")
         if uplink.full_duplex is False:
             value -= 20
             notes.append("half duplex -20")
@@ -280,13 +280,13 @@ def score_network(network: NetworkSnapshot | None, weight: float) -> Component:
 
     if uplink is None and not measured:
         return Component(
-            "network", "Network", None, weight,
-            "; ".join(notes) or "no link or latency could be measured",
+            "network", "Сеть", None, weight,
+            "; ".join(notes) or "не удалось измерить ни канал, ни задержку",
         )
     return Component(
-        "network", "Network", _clamp(value), weight,
-        "; ".join(notes) + " (heuristic deductions: loss x3, jitter over 5 ms "
-        "x2, latency over 50 ms x0.5)",
+        "network", "Сеть", _clamp(value), weight,
+        "; ".join(notes) + " (эвристика: потери ×3, джиттер свыше 5 мс "
+        "×2, задержка свыше 50 мс ×0.5)",
     )
 
 

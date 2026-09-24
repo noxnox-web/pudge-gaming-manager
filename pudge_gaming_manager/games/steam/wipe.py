@@ -111,17 +111,17 @@ class WipePlan:
 
     def preview_lines(self) -> list[str]:
         lines = [
-            f"{format_size(self.total_bytes)} reclaimable — "
-            f"{len(self.remove)} game(s) removed, {len(self.keep)} kept"
+            f"{format_size(self.total_bytes)} освободится — "
+            f"удалить игр: {len(self.remove)}, оставить: {len(self.keep)}"
         ]
         for game in sorted(self.remove, key=lambda g: g.size_bytes or 0, reverse=True):
-            lines.append(f"  - REMOVE  {game.size_display:>10}  {game.name}")
+            lines.append(f"  - удалить  {game.size_display:>10}  {game.name}")
         for game in self.keep:
-            lines.append(f"  = keep    {game.size_display:>10}  {game.name}")
+            lines.append(f"  = оставить {game.size_display:>10}  {game.name}")
         for cache in self.caches:
-            lines.append(f"  - cache   {cache.size_display:>10}  {cache.label}")
+            lines.append(f"  - кэш     {cache.size_display:>10}  {cache.label}")
         for target in self.signout:
-            lines.append(f"  - signout {target.size_display:>10}  {target.label}")
+            lines.append(f"  - выход   {target.size_display:>10}  {target.label}")
         return lines
 
 

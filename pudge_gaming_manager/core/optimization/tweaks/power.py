@@ -47,9 +47,9 @@ class SetPowerPlanTweak(Tweak):
 
     id = "power.plan.set_active"
     version = 1
-    name = "Set the active power plan"
+    name = "Активная схема питания"
     description = (
-        "Switches Windows to the chosen power plan so the processor is not "
+        "Переключает Windows на выбранную схему питания, чтобы процессор не "
         "held in a low performance state during play."
     )
     rationale = (
@@ -95,9 +95,9 @@ class SetPowerPlanTweak(Tweak):
             needs_change=current_guid != self.target_guid,
             current_absent=current_guid is None,
             summary=(
-                f"Power plan: {current_label} -> {self.target_name}"
+                f"Схема питания: {current_label} -> {self.target_name}"
                 if current_guid != self.target_guid
-                else f"Power plan already {self.target_name}"
+                else f"Схема питания уже {self.target_name}"
             ),
         )
 
@@ -105,7 +105,7 @@ class SetPowerPlanTweak(Tweak):
         manager = self._pm(ctx)
         if state.current_absent:
             return Validation.refuse(
-                "The current power plan could not be read, so it could not "
+                "Не удалось прочитать текущую схему питания, поэтому её нельзя "
                 "be restored afterwards."
             )
         if not manager.scheme_exists(self.target_guid):
@@ -122,9 +122,9 @@ class SetPowerPlanTweak(Tweak):
             # which is the correct outcome: without the previous GUID there
             # is no way back.
             raise PgmError(
-                what="Cannot save the current power plan",
-                reason="Windows did not report an active power scheme.",
-                remedy="Open Windows power settings and select a plan, then retry.",
+                what="Не удалось сохранить текущую схему питания",
+                reason="Windows не сообщил активную схему питания.",
+                remedy="Откройте параметры питания Windows, выберите схему и повторите.",
             )
         return BackupRecord(
             backup_id=BackupRecord.new_id(),
@@ -141,7 +141,7 @@ class SetPowerPlanTweak(Tweak):
     def apply(self, ctx: TweakContext, state: TweakState) -> ApplyResult:
         self._pm(ctx).set_active(self.target_guid)
         return ApplyResult(
-            Outcome.SUCCESS, f"Active power plan set to {self.target_name}."
+            Outcome.SUCCESS, f"Активная схема питания: {self.target_name}."
         )
 
     def verify(self, ctx: TweakContext, state: TweakState) -> Verification:

@@ -301,7 +301,7 @@ def test_signout_is_reported_failed_when_a_token_file_is_refused(tmp_path, monke
     wiper = _wiper()
     result = wiper.wipe(wiper.scan(keep_app_ids={730}))
     assert result.signed_out is False
-    assert any("sign-in tokens" in line for line in result.refused)
+    assert any("токены входа" in line for line in result.refused)
 
 
 def test_dry_run_signs_nobody_out(tmp_path, monkeypatch) -> None:

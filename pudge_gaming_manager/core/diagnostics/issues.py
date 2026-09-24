@@ -58,13 +58,13 @@ def _gpu_issues(snapshot: HardwareSnapshot) -> list[Issue]:
                 found.append(
                     Issue(
                         id=f"gpu.temperature.{gpu.model}",
-                        title=f"GPU is running at {temperature:.0f}°C",
+                        title=f"Видеокарта греется до {temperature:.0f}°C",
                         detail=(
-                            f"{gpu.model} is at {temperature:.0f}°C. The driver "
-                            f"reports its maximum operating temperature as "
-                            f"{threshold.warning:.0f}°C and starts reducing clocks "
-                            f"at {threshold.critical:.0f}°C. Check case airflow "
-                            "and dust build-up."
+                            f"{gpu.model}: {temperature:.0f}°C. Драйвер сообщает, что "
+                            f"максимальная рабочая температура "
+                            f"{threshold.warning:.0f}°C, а снижение частот "
+                            f"начинается при {threshold.critical:.0f}°C. Проверьте "
+                            "продув корпуса и запылённость."
                         ),
                         severity=(
                             Severity.CRITICAL
@@ -73,7 +73,7 @@ def _gpu_issues(snapshot: HardwareSnapshot) -> list[Issue]:
                         ),
                         subsystem="gpu",
                         fixable=False,
-                        fix_hint="Clean dust filters and check case fans.",
+                        fix_hint="Очистите пылевые фильтры и проверьте вентиляторы корпуса.",
                         threshold_kind=ThresholdKind.VENDOR,
                     )
                 )
@@ -82,17 +82,17 @@ def _gpu_issues(snapshot: HardwareSnapshot) -> list[Issue]:
             found.append(
                 Issue(
                     id=f"gpu.thermal_throttle.{gpu.model}",
-                    title="GPU is thermally throttling right now",
+                    title="Видеокарта прямо сейчас в тепловом троттлинге",
                     detail=(
-                        f"The driver is reducing {gpu.model} clocks because of "
-                        "temperature. Frame rates will be lower and less "
-                        "consistent than this card is capable of. Reported "
-                        f"reasons: {', '.join(gpu.throttle_reasons)}."
+                        f"Драйвер снижает частоты {gpu.model} из-за "
+                        "температуры. Частота кадров будет ниже и менее "
+                        "стабильной, чем способна эта видеокарта. Причины: "
+                        f"{', '.join(gpu.throttle_reasons)}."
                     ),
                     severity=Severity.CRITICAL,
                     subsystem="gpu",
                     fixable=False,
-                    fix_hint="Improve cooling; software cannot fix this.",
+                    fix_hint="Улучшите охлаждение; программно это не исправить.",
                     threshold_kind=ThresholdKind.VENDOR,
                 )
             )
@@ -100,13 +100,13 @@ def _gpu_issues(snapshot: HardwareSnapshot) -> list[Issue]:
             found.append(
                 Issue(
                     id=f"gpu.power_throttle.{gpu.model}",
-                    title="GPU is limited by its power cap",
+                    title="Видеокарта упирается в лимит питания",
                     detail=(
-                        f"{gpu.model} is drawing "
-                        f"{gpu.power_watts.display(precision=0)} against a limit "
-                        f"of {gpu.power_limit_watts.display(precision=0)}. This is "
-                        "normal under sustained full load; persistent power "
-                        "braking at idle suggests a power-delivery problem."
+                        f"{gpu.model} потребляет "
+                        f"{gpu.power_watts.display(precision=0)} при лимите "
+                        f"{gpu.power_limit_watts.display(precision=0)}. Это "
+                        "нормально под полной нагрузкой; постоянное ограничение "
+                        "в простое указывает на проблему питания."
                     ),
                     severity=Severity.INFO,
                     subsystem="gpu",
@@ -132,21 +132,21 @@ def _disk_issues(snapshot: HardwareSnapshot) -> list[Issue]:
             severity = None  # type: ignore[assignment]
 
         if severity is not None:
-            where = "System drive" if disk.is_system_disk else "Drive"
+            where = "Системный диск" if disk.is_system_disk else "Диск"
             found.append(
                 Issue(
                     id=f"storage.low_free_space.{disk.device_id}",
-                    title=f"{where} {disk.device_id} is low on space",
+                    title=f"{where} {disk.device_id}: мало места",
                     detail=(
-                        f"{disk.free_gb.display(precision=1)} free of "
+                        f"{disk.free_gb.display(precision=1)} свободно из "
                         f"{disk.total_gb.display(precision=1)} ({free:.0f}%). "
-                        "A nearly full system drive causes stutter, failed "
-                        "shader-cache writes and failed Windows updates."
+                        "Почти заполненный системный диск вызывает подтормаживания, "
+                        "сбои записи кэша шейдеров и обновлений Windows."
                     ),
                     severity=severity,
                     subsystem="storage",
                     fixable=True,
-                    fix_hint="Run the Cleaner to remove temporary files.",
+                    fix_hint="Запустите очистку временных файлов.",
                     threshold_kind=ThresholdKind.HEURISTIC,
                 )
             )
@@ -155,16 +155,17 @@ def _disk_issues(snapshot: HardwareSnapshot) -> list[Issue]:
             found.append(
                 Issue(
                     id=f"storage.smart_unhealthy.{disk.device_id}",
-                    title=f"Drive {disk.device_id} reports a hardware problem",
+                    title=f"Диск {disk.device_id} сообщает об аппаратной проблеме",
                     detail=(
-                        f"Windows reports this disk as not healthy "
-                        f"({disk.model or 'unknown model'}). Back up its "
-                        "contents and plan a replacement."
+                        f"Windows считает этот диск неисправным "
+                        f"({disk.model or 'модель неизвестна'}). Сделайте резервную "
+                        f"копию его "
+                        "содержимое и запланируйте замену."
                     ),
                     severity=Severity.CRITICAL,
                     subsystem="storage",
                     fixable=False,
-                    fix_hint="Replace the drive. Software cannot repair this.",
+                    fix_hint="Замените диск. Программно это не чинится.",
                     threshold_kind=ThresholdKind.VENDOR,
                 )
             )
@@ -181,19 +182,19 @@ def _display_issues(snapshot: HardwareSnapshot) -> list[Issue]:
             Issue(
                 id=f"display.below_max_refresh.{monitor.device_name}",
                 title=(
-                    f"Display is running at {monitor.current_mode.refresh_hz} Hz "
-                    f"instead of {best} Hz"
+                    f"Монитор работает на {monitor.current_mode.refresh_hz} Гц "
+                    f"вместо {best} Гц"
                 ),
                 detail=(
-                    f"{monitor.friendly_name or monitor.device_name} supports "
-                    f"{best} Hz at the current resolution "
-                    f"({monitor.current_mode.width}x{monitor.current_mode.height}) "
-                    f"but is set to {monitor.current_mode.refresh_hz} Hz."
+                    f"{monitor.friendly_name or monitor.device_name} поддерживает "
+                    f"{best} Гц на текущем разрешении "
+                    f"({monitor.current_mode.width}x{monitor.current_mode.height}), "
+                    f"но выставлено {monitor.current_mode.refresh_hz} Гц."
                 ),
                 severity=Severity.WARNING,
                 subsystem="display",
                 fixable=True,
-                fix_hint=f"Set the refresh rate to {best} Hz.",
+                fix_hint=f"Установите частоту обновления {best} Гц.",
                 threshold_kind=ThresholdKind.DERIVED,
             )
         )
@@ -207,15 +208,15 @@ def _memory_issues(snapshot: HardwareSnapshot) -> list[Issue]:
     return [
         Issue(
             id="memory.high_usage",
-            title=f"Memory is {usage:.0f}% used with no game running",
+            title=f"Память занята на {usage:.0f}% без запущенной игры",
             detail=(
-                "High memory use before a session starts leaves little "
-                "headroom. Check background applications and startup items."
+                "Высокое использование памяти до начала сессии оставляет мало "
+                "запаса. Проверьте фоновые приложения и автозагрузку."
             ),
             severity=Severity.WARNING,
             subsystem="memory",
             fixable=False,
-            fix_hint="Review Startup and Background Apps.",
+            fix_hint="Проверьте автозагрузку и фоновые приложения.",
             threshold_kind=ThresholdKind.HEURISTIC,
         )
     ]
@@ -226,12 +227,12 @@ def _scan_issues(snapshot: HardwareSnapshot) -> list[Issue]:
     return [
         Issue(
             id=f"scan.warning.{index}",
-            title="Part of the system could not be read",
+            title="Часть системы не удалось прочитать",
             detail=warning,
             severity=Severity.INFO,
             subsystem="scan",
             fixable=False,
-            fix_hint="Run as Administrator if this persists.",
+            fix_hint="Запустите от администратора, если повторяется.",
         )
         for index, warning in enumerate(snapshot.warnings)
     ]

@@ -27,7 +27,7 @@ class ComparisonDialog(QDialog):
 
     def __init__(self, result: ComparisonResult, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Compare with Golden Profile")
+        self.setWindowTitle("Сравнение с профилем")
         self.setMinimumSize(640, 420)
         self.setStyleSheet(theme.stylesheet())
 
@@ -44,8 +44,8 @@ class ComparisonDialog(QDialog):
         layout.addWidget(heading)
 
         subtitle = QLabel(
-            f"{result.checked} setting(s) checked. Nothing on this PC has "
-            "been changed."
+            f"Проверено настроек: {result.checked}. На этом ПК ничего "
+            "не изменено."
         )
         subtitle.setObjectName("Subtitle")
         subtitle.setWordWrap(True)
@@ -57,7 +57,7 @@ class ComparisonDialog(QDialog):
         rows.setSelectionMode(QListWidget.SelectionMode.NoSelection)
         views = presenters.difference_views(result)
         if not views:
-            rows.addItem(QListWidgetItem("No differences found."))
+            rows.addItem(QListWidgetItem("Различий не найдено."))
         for view in views:
             item = QListWidgetItem(
                 f"{view.value}\n{view.detail}" if view.detail else view.value
@@ -68,8 +68,8 @@ class ComparisonDialog(QDialog):
         layout.addWidget(rows, stretch=1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        buttons.button(QDialogButtonBox.StandardButton.Close).setObjectName(
-            "Secondary"
-        )
+        close_btn = buttons.button(QDialogButtonBox.StandardButton.Close)
+        close_btn.setObjectName("Secondary")
+        close_btn.setText("Закрыть")
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)

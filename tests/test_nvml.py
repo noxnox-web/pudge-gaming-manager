@@ -98,7 +98,7 @@ def test_vendor_threshold_is_labelled_as_vendor() -> None:
         warning=93.0, critical=95.0, kind=ThresholdKind.VENDOR,
         source="NVIDIA driver limits",
     )
-    assert "vendor limit" in threshold.describe()
+    assert "предел производителя" in threshold.describe()
     assert "heuristic" not in threshold.describe()
 
 

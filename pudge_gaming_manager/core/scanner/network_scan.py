@@ -29,7 +29,7 @@ _log = get_logger(__name__)
 #: the club network. It is not a game server; latency to a particular game
 #: depends on where that game's servers are.
 INTERNET_REFERENCE = "1.1.1.1"
-INTERNET_LABEL = "internet reference (1.1.1.1)"
+INTERNET_LABEL = "интернет (1.1.1.1)"
 
 PingFunction = Callable[..., PingStats]
 
@@ -63,7 +63,7 @@ class NetworkScanner:
         warnings: list[str] = []
         with ThreadPoolExecutor(max_workers=2) as pool:
             gateway_job = (
-                pool.submit(self._measure, routing.gateway, "gateway", False, warnings)
+                pool.submit(self._measure, routing.gateway, "роутер", False, warnings)
                 if routing.gateway
                 else None
             )
@@ -86,9 +86,9 @@ class NetworkScanner:
             gateway_ping = replace(
                 gateway_ping,
                 unreliable_reason=(
-                    "traffic to the router is routed through another adapter "
-                    "(typically a VPN), so these round trips do not measure "
-                    "the local network"
+                    "трафик к роутеру идёт через другой адаптер "
+                    "(обычно VPN), поэтому эти замеры не отражают "
+                    "локальную сеть"
                 ),
             )
 

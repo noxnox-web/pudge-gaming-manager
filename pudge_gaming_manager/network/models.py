@@ -119,14 +119,14 @@ class PingStats:
 
     def summary(self) -> str:
         if not self.trustworthy:
-            return f"not measurable: {self.unreliable_reason}"
+            return f"не измеряется: {self.unreliable_reason}"
         if not self.reachable:
-            return f"no reply from {self.target} ({self.sent} sent)"
+            return f"нет ответа от {self.target} (отправлено {self.sent})"
         avg = self.avg_ms or 0.0
-        avg_text = "<1 ms" if avg < 1 else f"{avg:.0f} ms"
+        avg_text = "<1 мс" if avg < 1 else f"{avg:.0f} мс"
         jitter = self.jitter_ms
-        jitter_text = f", jitter {jitter:.1f} ms" if jitter is not None else ""
-        return f"{avg_text} avg, {self.loss_percent:.0f}% loss{jitter_text}"
+        jitter_text = f", джиттер {jitter:.1f} мс" if jitter is not None else ""
+        return f"{avg_text} сред., потери {self.loss_percent:.0f}%{jitter_text}"
 
 
 @dataclass(frozen=True, slots=True)

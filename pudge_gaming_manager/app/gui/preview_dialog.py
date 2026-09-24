@@ -43,7 +43,7 @@ class PreviewDialog(QDialog):
 
     def __init__(self, preview: OptimizationPreview, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Review planned changes")
+        self.setWindowTitle("Проверка изменений")
         self.setMinimumSize(660, 460)
         self.setStyleSheet(theme.stylesheet())
         self._preview = preview
@@ -53,9 +53,9 @@ class PreviewDialog(QDialog):
         layout.setSpacing(14)
 
         heading = QLabel(
-            f"{preview.change_count} change(s) planned — untick any to skip"
+            f"Запланировано изменений: {preview.change_count} — снимите галочку, чтобы пропустить"
             if preview.has_changes
-            else "No changes are needed"
+            else "Изменения не нужны"
         )
         heading.setObjectName("Title")
         layout.addWidget(heading)
@@ -66,11 +66,11 @@ class PreviewDialog(QDialog):
             if c.tweak.scope is BackupScope.NONE
         ]
         subtitle = QLabel(
-            "Nothing has been changed yet. Each reversible change is backed "
-            "up first, and undone automatically if it does not verify."
+            "Пока ничего не изменено. Каждое обратимое изменение сначала "
+            "сохраняется в резерв и откатывается автоматически, если не подтвердится."
             + (
-                f"  {len(irreversible)} change(s) below cannot be undone — "
-                "each is marked."
+                f"  Необратимых изменений ниже: {len(irreversible)} — "
+                "каждое помечено."
                 if irreversible
                 else ""
             )
@@ -89,8 +89,8 @@ class PreviewDialog(QDialog):
         self._populate()
 
         note = QLabel(
-            "Applying a change means the setting is updated and verified. "
-            "It is not a measured performance gain."
+            "Применить изменение — значит обновить и проверить настройку. "
+            "Это не измеренный прирост производительности."
         )
         note.setObjectName("ScoreNote")
         note.setWordWrap(True)
@@ -98,11 +98,12 @@ class PreviewDialog(QDialog):
 
         buttons = QDialogButtonBox()
         self._apply = buttons.addButton(
-            "Apply changes", QDialogButtonBox.ButtonRole.AcceptRole
+            "Применить", QDialogButtonBox.ButtonRole.AcceptRole
         )
         self._apply.setObjectName("Primary")
         self._apply.setEnabled(preview.has_changes)
         cancel = buttons.addButton(QDialogButtonBox.StandardButton.Cancel)
+        cancel.setText("Отмена")
         cancel.setObjectName("Secondary")
         # Cancel is the default: a stray Enter must not modify a club PC.
         cancel.setDefault(True)
@@ -140,7 +141,7 @@ class PreviewDialog(QDialog):
             # a general note at the top would let an operator approve a
             # deletion believing it could be undone.
             reversibility = (
-                "  ·  CANNOT BE UNDONE"
+                "  ·  НЕОБРАТИМО"
                 if change.tweak.scope is BackupScope.NONE
                 else ""
             )
@@ -165,7 +166,7 @@ class PreviewDialog(QDialog):
             # Skipped entries are shown, not hidden: "why didn't it fix X?"
             # must be answerable from this screen.
             item = QListWidgetItem(
-                f"[skipped]  {change.summary}\n{change.skip_reason}"
+                f"[пропущено]  {change.summary}\n{change.skip_reason}"
             )
             item.setForeground(Qt.GlobalColor.gray)
             self._list.addItem(item)
@@ -176,7 +177,7 @@ class ResultDialog(QDialog):
 
     def __init__(self, outcome: OptimizationOutcome, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Optimization complete")
+        self.setWindowTitle("Оптимизация завершена")
         self.setMinimumSize(640, 460)
         self.setStyleSheet(theme.stylesheet())
 
@@ -185,27 +186,27 @@ class ResultDialog(QDialog):
         layout.setSpacing(12)
 
         heading = QLabel(
-            "Optimization complete"
+            "Оптимизация завершена"
             if outcome.run.failed == 0
-            else "Optimization finished with problems"
+            else "Оптимизация завершена с ошибками"
         )
         heading.setObjectName("Title")
         layout.addWidget(heading)
 
         summary = QHBoxLayout()
         summary.addWidget(
-            _stat("Applied", str(outcome.run.applied), theme.GOOD)
+            _stat("Применено", str(outcome.run.applied), theme.GOOD)
         )
         summary.addWidget(
             _stat(
-                "Rolled back",
+                "Откачено",
                 str(outcome.run.rolled_back),
                 theme.WARNING if outcome.run.rolled_back else theme.TEXT_MUTED,
             )
         )
         summary.addWidget(
             _stat(
-                "Failed",
+                "Ошибок",
                 str(outcome.run.failed),
                 theme.CRITICAL if outcome.run.failed else theme.TEXT_MUTED,
             )
@@ -227,9 +228,9 @@ class ResultDialog(QDialog):
         layout.addWidget(detail, stretch=1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        buttons.button(QDialogButtonBox.StandardButton.Close).setObjectName(
-            "Secondary"
-        )
+        close_btn = buttons.button(QDialogButtonBox.StandardButton.Close)
+        close_btn.setObjectName("Secondary")
+        close_btn.setText("Закрыть")
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)
         layout.addWidget(buttons)

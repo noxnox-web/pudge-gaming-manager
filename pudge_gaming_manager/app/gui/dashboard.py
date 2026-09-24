@@ -99,12 +99,12 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         left = QVBoxLayout()
         left.setSpacing(2)
         left.addWidget(widgets.label("PUDGE GAMING MANAGER", "Title"))
-        self._machine = widgets.label("Scanning…", "Subtitle")
+        self._machine = widgets.label("Сканирование…", "Subtitle")
         left.addWidget(self._machine)
 
         right = QVBoxLayout()
         right.setSpacing(2)
-        self._state = widgets.label("SCANNING", "ScoreCaption")
+        self._state = widgets.label("СКАНИРОВАНИЕ", "ScoreCaption")
         self._state.setAlignment(Qt.AlignmentFlag.AlignRight)
         self._state.setStyleSheet(f"color: {theme.WARNING};")
         self._status = widgets.label("", "ScoreNote")
@@ -135,17 +135,17 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         layout.setContentsMargins(20, 18, 20, 18)
         layout.setSpacing(2)
 
-        layout.addWidget(widgets.label("SYSTEM", "SectionHeading"))
+        layout.addWidget(widgets.label("СИСТЕМА", "SectionHeading"))
         layout.addSpacing(8)
 
         self._metrics: dict[str, MetricRow] = {}
         for key, name in (
             ("cpu", "CPU"),
             ("gpu", "GPU"),
-            ("ram", "Memory"),
-            ("disk", "System disk"),
-            ("display", "Display"),
-            ("network", "Network"),
+            ("ram", "Память"),
+            ("disk", "Системный диск"),
+            ("display", "Дисплей"),
+            ("network", "Сеть"),
         ):
             widget = MetricRow(name)
             self._metrics[key] = widget
@@ -164,19 +164,19 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         layout.addStretch(1)
 
         buttons = QHBoxLayout()
-        self._rescan = QPushButton("Rescan")
+        self._rescan = QPushButton("Пересканировать")
         self._rescan.setObjectName("Secondary")
         self._rescan.clicked.connect(self._controller.start)
         buttons.addWidget(self._rescan)
 
         # Golden Profile actions need a scan to capture or compare against.
-        self._save_profile = QPushButton("Save as profile…")
+        self._save_profile = QPushButton("Сохранить профиль…")
         self._save_profile.setObjectName("Secondary")
         self._save_profile.setEnabled(False)
         self._save_profile.clicked.connect(self._on_save_profile)
         buttons.addWidget(self._save_profile)
 
-        self._compare_profile = QPushButton("Compare with profile…")
+        self._compare_profile = QPushButton("Сравнить с профилем…")
         self._compare_profile.setObjectName("Secondary")
         self._compare_profile.setEnabled(False)
         self._compare_profile.clicked.connect(self._on_compare_profile)
@@ -184,7 +184,7 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         layout.addLayout(buttons)
 
         # A club reset: remove every Steam game except those a profile keeps.
-        self._reset_steam = QPushButton("Reset Steam games…")
+        self._reset_steam = QPushButton("ОЧИСТКА СТИМА")
         self._reset_steam.setObjectName("Secondary")
         self._reset_steam.setEnabled(False)
         self._reset_steam.clicked.connect(self._on_reset_steam)
@@ -197,14 +197,14 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(6)
 
-        layout.addWidget(widgets.label("GAMING READINESS", "SectionHeading"))
+        layout.addWidget(widgets.label("ГОТОВНОСТЬ К ИГРАМ", "SectionHeading"))
 
         self._score_value = widgets.label("—", "ScoreValue")
         self._score_value.setStyleSheet(f"color: {theme.UNAVAILABLE};")
         layout.addWidget(self._score_value)
 
         self._score_note = widgets.label(
-            "A diagnostic indicator, not a frame-rate estimate.", "ScoreNote"
+            "Диагностический показатель, не прогноз FPS.", "ScoreNote"
         )
         self._score_note.setWordWrap(True)
         layout.addWidget(self._score_note)
@@ -217,13 +217,13 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         layout.addSpacing(10)
 
         buttons = QHBoxLayout()
-        self._optimize = QPushButton("OPTIMIZE PC")
+        self._optimize = QPushButton("ОПТИМИЗИРОВАТЬ ПК")
         self._optimize.setObjectName("Primary")
         self._optimize.setEnabled(False)
         self._optimize.clicked.connect(self._on_optimize)
         buttons.addWidget(self._optimize, stretch=2)
 
-        self._explain = QPushButton("How is this calculated?")
+        self._explain = QPushButton("Как это посчитано?")
         self._explain.setObjectName("Secondary")
         self._explain.setEnabled(False)
         self._explain.clicked.connect(self._on_explain)
@@ -237,7 +237,7 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         layout.setContentsMargins(20, 18, 20, 18)
         layout.setSpacing(10)
 
-        self._issues_heading = widgets.label("FINDINGS", "SectionHeading")
+        self._issues_heading = widgets.label("НАХОДКИ", "SectionHeading")
         layout.addWidget(self._issues_heading)
 
         self._issues = QListWidget()
@@ -254,7 +254,7 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
     # -- scan lifecycle ----------------------------------------------------
 
     def _on_scan_started(self) -> None:
-        self._state.setText("SCANNING")
+        self._state.setText("СКАНИРОВАНИЕ")
         self._state.setStyleSheet(f"color: {theme.WARNING};")
         self._rescan.setEnabled(False)
         self._optimize.setEnabled(False)
@@ -262,11 +262,11 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         self._set_profile_actions(False)
 
     def _on_scan_failed(self, message: str) -> None:
-        self._state.setText("SCAN FAILED")
+        self._state.setText("СБОЙ СКАНИРОВАНИЯ")
         self._state.setStyleSheet(f"color: {theme.CRITICAL};")
         self._status.setText("")
         self._rescan.setEnabled(True)
-        QMessageBox.warning(self, "Scan failed", message)
+        QMessageBox.warning(self, "Сбой сканирования", message)
 
     def _on_scan_completed(self, result: ScanResult) -> None:
         self._result = result
@@ -279,10 +279,10 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
 
         actionable = len(result.actionable_issues)
         if actionable:
-            self._state.setText("ACTION NEEDED")
+            self._state.setText("ТРЕБУЕТСЯ ДЕЙСТВИЕ")
             self._state.setStyleSheet(f"color: {theme.WARNING};")
         else:
-            self._state.setText("READY")
+            self._state.setText("ГОТОВО")
             self._state.setStyleSheet(f"color: {theme.GOOD};")
 
         fixable = [i for i in result.actionable_issues if i.fixable]
@@ -296,8 +296,8 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
             f"(build {snapshot.os.build})"
         )
         self._scan_meta.setText(
-            f"Scanned in {snapshot.scan_duration_s:.1f}s · "
-            f"{len(snapshot.warnings)} scan warning(s)"
+            f"Сканирование за {snapshot.scan_duration_s:.1f} с · "
+            f"предупреждений: {len(snapshot.warnings)}"
         )
 
     # -- population --------------------------------------------------------
@@ -327,20 +327,20 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         )
         if score.excluded:
             self._score_note.setText(
-                "Diagnostic indicator, not a frame-rate estimate. "
-                f"Excluded: {', '.join(score.excluded)}."
+                "Диагностический показатель, не прогноз FPS. "
+                f"Исключено: {', '.join(score.excluded)}."
             )
 
     def _populate_issues(self, issues: tuple[Issue, ...]) -> None:
         self._issues.clear()
         actionable = [i for i in issues if i.status.is_actionable]
         self._issues_heading.setText(
-            f"FINDINGS — {len(actionable)} NEED ATTENTION" if actionable
-            else "FINDINGS — NONE"
+            f"НАХОДКИ — ТРЕБУЮТ ВНИМАНИЯ: {len(actionable)}" if actionable
+            else "НАХОДКИ — НЕТ"
         )
 
         if not issues:
-            item = QListWidgetItem("No problems found.")
+            item = QListWidgetItem("Проблем не найдено.")
             item.setForeground(Qt.GlobalColor.gray)
             self._issues.addItem(item)
             return
@@ -369,11 +369,10 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         body = "\n".join(f"• {line}" for line in score.formula_lines())
         QMessageBox.information(
             self,
-            "How the Gaming Score is calculated",
-            f"Score: {score.display()}\n\n{body}\n\n"
-            "This is a diagnostic indicator. It is not a frame-rate "
-            "prediction, and optimizing it does not by itself prove a "
-            "performance gain.",
+            "Как считается оценка готовности",
+            f"Оценка: {score.display()}\n\n{body}\n\n"
+            "Это диагностический показатель, а не прогноз FPS. Рост "
+            "оценки сам по себе не доказывает прирост производительности.",
         )
 
     def _on_optimize(self) -> None:
@@ -382,7 +381,7 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
             return
         self._optimize.setEnabled(False)
         self._rescan.setEnabled(False)
-        self._status.setText("Planning changes…")
+        self._status.setText("Планирование изменений…")
         self._optimizer.start_preview(self._result.snapshot, self._result.issues)
 
     def _on_preview_ready(self, preview: object) -> None:
@@ -398,9 +397,9 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
 
         self._optimize.setEnabled(False)
         self._rescan.setEnabled(False)
-        self._state.setText("OPTIMIZING")
+        self._state.setText("ОПТИМИЗАЦИЯ")
         self._state.setStyleSheet(f"color: {theme.WARNING};")
-        self._status.setText("Applying changes…")
+        self._status.setText("Применение изменений…")
         self._optimizer.start_apply(preview)  # type: ignore[arg-type]
 
     def _on_optimize_finished(self, outcome: object) -> None:
@@ -415,9 +414,9 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         self._status.setText("")
         self._rescan.setEnabled(True)
         self._optimize.setEnabled(True)
-        self._state.setText("ACTION NEEDED")
+        self._state.setText("ТРЕБУЕТСЯ ДЕЙСТВИЕ")
         self._state.setStyleSheet(f"color: {theme.WARNING};")
-        QMessageBox.warning(self, "Optimization failed", message)
+        QMessageBox.warning(self, "Сбой оптимизации", message)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
         # A write in progress must not be interrupted: applying a tweak or
@@ -426,15 +425,15 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         # Scans and profile reads only read, so closing waits for them to
         # finish (shutdown joins the worker).
         blocker = (
-            "Changes are being applied."
+            "Применяются изменения."
             if self._optimizer.applying
-            else "Steam games are being removed."
+            else "Идёт очистка Стима."
             if self._steam.wiping
             else None
         )
         if blocker is not None:
             QMessageBox.warning(
-                self, "Operation in progress",
+                self, "Операция выполняется",
                 f"{blocker} Please wait for it to finish before closing.",
             )
             event.ignore()

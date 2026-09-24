@@ -58,10 +58,10 @@ class Difference:
 
     def line(self) -> str:
         if self.severity is DriftSeverity.UNKNOWN:
-            return f"{self.section}.{self.setting}: could not be checked — {self.detail}"
+            return f"{self.section}.{self.setting}: не удалось проверить — {self.detail}"
         return (
-            f"{self.section}.{self.setting}: expected {self.expected!r}, "
-            f"found {self.actual!r}"
+            f"{self.section}.{self.setting}: ожидалось {self.expected!r}, "
+            f"обнаружено {self.actual!r}"
         )
 
 
@@ -87,13 +87,13 @@ class ComparisonResult:
 
     def summary(self) -> str:
         if self.matches and not self.unknown:
-            return f"Matches '{self.profile_name}'."
+            return f"Совпадает с «{self.profile_name}»."
         parts = []
         if self.drifted:
-            parts.append(f"{len(self.drifted)} difference(s)")
+            parts.append(f"различий: {len(self.drifted)}")
         if self.unknown:
-            parts.append(f"{len(self.unknown)} not checkable")
-        return f"Differs from '{self.profile_name}': " + ", ".join(parts)
+            parts.append(f"не проверено: {len(self.unknown)}")
+        return f"Отличается от «{self.profile_name}»: " + ", ".join(parts)
 
     def to_dict(self) -> dict:
         """Machine-readable form (rule #25)."""
@@ -295,7 +295,7 @@ def _compare_hardware(
                 Difference(
                     "hardware", "min_ram_gb", expectations.min_ram_gb, None,
                     DriftSeverity.UNKNOWN,
-                    "Installed memory could not be read"
+                    "Не удалось прочитать объём памяти"
                     + (
                         f": {snapshot.ram.total_mb.unavailable_reason}"
                         if snapshot.ram.total_mb.unavailable_reason
@@ -308,7 +308,7 @@ def _compare_hardware(
                 Difference(
                     "hardware", "min_ram_gb", expectations.min_ram_gb,
                     round(total / 1024, 1), DriftSeverity.DRIFT,
-                    "This PC has less memory than the reference.",
+                    "У этого ПК меньше памяти, чем у эталона.",
                 )
             )
 
@@ -320,7 +320,7 @@ def _compare_hardware(
             out.append(
                 Difference(
                     "hardware", "min_vram_gb", expectations.min_vram_gb, None,
-                    DriftSeverity.UNKNOWN, "VRAM could not be read.",
+                    DriftSeverity.UNKNOWN, "Не удалось прочитать видеопамять.",
                 )
             )
         elif vram / 1024 < expectations.min_vram_gb:
@@ -328,7 +328,7 @@ def _compare_hardware(
                 Difference(
                     "hardware", "min_vram_gb", expectations.min_vram_gb,
                     vram // 1024, DriftSeverity.DRIFT,
-                    "This GPU has less video memory than the reference.",
+                    "У этой видеокарты меньше видеопамяти, чем у эталона.",
                 )
             )
 
@@ -341,7 +341,7 @@ def _compare_hardware(
                 Difference(
                     "hardware", "min_free_disk_percent",
                     expectations.min_free_disk_percent, None,
-                    DriftSeverity.UNKNOWN, "Free space could not be read.",
+                    DriftSeverity.UNKNOWN, "Не удалось прочитать свободное место.",
                 )
             )
         elif free < expectations.min_free_disk_percent:
@@ -350,7 +350,7 @@ def _compare_hardware(
                     "hardware", "min_free_disk_percent",
                     expectations.min_free_disk_percent, round(free, 1),
                     DriftSeverity.DRIFT,
-                    "The system drive has less free space than the profile requires.",
+                    "На системном диске меньше свободного места, чем требует профиль.",
                     fixable=True,
                 )
             )
@@ -363,7 +363,7 @@ def _compare_hardware(
             out.append(
                 Difference(
                     "hardware", "require_ssd_system_disk", "SSD", None,
-                    DriftSeverity.UNKNOWN, "Media type could not be read.",
+                    DriftSeverity.UNKNOWN, "Не удалось определить тип носителя.",
                 )
             )
         elif media != "SSD":
@@ -371,7 +371,7 @@ def _compare_hardware(
                 Difference(
                     "hardware", "require_ssd_system_disk", "SSD", media,
                     DriftSeverity.DRIFT,
-                    "The system drive is not an SSD.",
+                    "Системный диск — не SSD.",
                 )
             )
 
@@ -383,14 +383,14 @@ def _compare_hardware(
             out.append(
                 Difference(
                     "hardware", "gpu_vendor", expectations.gpu_vendor, None,
-                    DriftSeverity.UNKNOWN, "GPU vendor could not be determined.",
+                    DriftSeverity.UNKNOWN, "Не удалось определить производителя видеокарты.",
                 )
             )
         elif vendor != expectations.gpu_vendor:
             out.append(
                 Difference(
                     "hardware", "gpu_vendor", expectations.gpu_vendor, vendor,
-                    DriftSeverity.DRIFT, "Different GPU vendor.",
+                    DriftSeverity.DRIFT, "Другой производитель видеокарты.",
                 )
             )
 
@@ -401,14 +401,14 @@ def _compare_hardware(
             out.append(
                 Difference(
                     "hardware", "min_cpu_cores", expectations.min_cpu_cores, None,
-                    DriftSeverity.UNKNOWN, "Core count could not be read.",
+                    DriftSeverity.UNKNOWN, "Не удалось прочитать число ядер.",
                 )
             )
         elif cores < expectations.min_cpu_cores:
             out.append(
                 Difference(
                     "hardware", "min_cpu_cores", expectations.min_cpu_cores, cores,
-                    DriftSeverity.DRIFT, "Fewer CPU cores than the reference.",
+                    DriftSeverity.DRIFT, "Меньше ядер ЦП, чем у эталона.",
                 )
             )
 
@@ -424,7 +424,7 @@ def _compare_power(
         out.append(
             Difference(
                 "power", "scheme_guid", profile.power.scheme_guid, None,
-                DriftSeverity.UNKNOWN, "The active power plan could not be read.",
+                DriftSeverity.UNKNOWN, "Не удалось прочитать активную схему питания.",
             )
         )
         return 1
@@ -433,7 +433,7 @@ def _compare_power(
             Difference(
                 "power", "scheme_guid", profile.power.scheme_guid, active_guid,
                 DriftSeverity.DRIFT,
-                f"Expected the '{profile.power.scheme_name or 'profile'}' plan.",
+                f"Ожидалась схема «{profile.power.scheme_name or 'из профиля'}».",
                 fixable=True,
             )
         )
@@ -459,8 +459,8 @@ def _compare_display(
                         "display", f"refresh_hz[{monitor.friendly_name}]",
                         best, monitor.current_mode.refresh_hz,
                         DriftSeverity.DRIFT,
-                        "The display supports a higher refresh rate at this "
-                        "resolution.",
+                        "Монитор поддерживает большую частоту обновления на этом "
+                        "разрешении.",
                         fixable=True,
                     )
                 )
@@ -473,7 +473,7 @@ def _compare_display(
                         "display", f"minimum_refresh_hz[{monitor.friendly_name}]",
                         policy.minimum_refresh_hz, monitor.current_mode.refresh_hz,
                         DriftSeverity.DRIFT,
-                        "Below the club's minimum refresh rate.",
+                        "Ниже минимальной частоты обновления клуба.",
                         fixable=True,
                     )
                 )

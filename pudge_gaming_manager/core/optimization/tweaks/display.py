@@ -61,9 +61,9 @@ class SetRefreshRateTweak(Tweak):
 
     id = "display.refresh_rate.maximise"
     version = 1
-    name = "Use the display's highest refresh rate"
+    name = "Максимальная частота обновления монитора"
     description = (
-        "Sets the monitor to the fastest refresh rate it supports at the "
+        "Ставит монитору самую высокую частоту обновления, доступную на "
         "resolution it is already running."
     )
     rationale = (
@@ -88,7 +88,7 @@ class SetRefreshRateTweak(Tweak):
             return TweakState(
                 needs_change=False,
                 current_absent=True,
-                summary=f"{self.friendly_name}: current mode unknown",
+                summary=f"{self.friendly_name}: текущий режим неизвестен",
             )
 
         modes = display.enumerate_modes(self.device_name)
@@ -105,21 +105,21 @@ class SetRefreshRateTweak(Tweak):
             desired_value=_encode(target),
             needs_change=best > current.refresh_hz,
             summary=(
-                f"{self.friendly_name}: {current.refresh_hz} Hz -> {best} Hz"
+                f"{self.friendly_name}: {current.refresh_hz} Гц -> {best} Гц"
                 if best > current.refresh_hz
-                else f"{self.friendly_name}: already at {current.refresh_hz} Hz"
+                else f"{self.friendly_name}: уже {current.refresh_hz} Гц"
             ),
         )
 
     def validate(self, ctx: TweakContext, state: TweakState) -> Validation:
         if state.current_absent:
             return Validation.refuse(
-                "The current display mode could not be read, so it could not "
-                "be restored afterwards."
+                "Не удалось прочитать текущий режим монитора, поэтому его нельзя "
+                "будет восстановить."
             )
         target = _decode(str(state.desired_value))
         if target is None:
-            return Validation.refuse("The target display mode is not valid.")
+            return Validation.refuse("Целевой режим монитора недопустим.")
 
         # The documented dry run for display changes: Windows validates the
         # mode without applying it.
@@ -144,7 +144,7 @@ class SetRefreshRateTweak(Tweak):
     def apply(self, ctx: TweakContext, state: TweakState) -> ApplyResult:
         target = _decode(str(state.desired_value))
         if target is None:
-            return ApplyResult(Outcome.FAILED, "The target display mode is not valid.")
+            return ApplyResult(Outcome.FAILED, "Целевой режим монитора недопустим.")
 
         outcome = display.apply_mode(self.device_name, target)
         if not outcome.ok and not outcome.needs_restart:
@@ -156,20 +156,20 @@ class SetRefreshRateTweak(Tweak):
     def verify(self, ctx: TweakContext, state: TweakState) -> Verification:
         current = display.get_current_mode(self.device_name)
         if current is None:
-            return Verification.deny(None, "The display mode could not be re-read.")
+            return Verification.deny(None, "Не удалось перечитать режим монитора.")
         observed = _encode(current)
         if observed == state.desired_value:
-            return Verification.confirm(observed, "Windows confirms the new mode.")
+            return Verification.confirm(observed, "Windows подтверждает новый режим.")
         return Verification.deny(
             observed,
-            f"Expected {state.desired_value} but the display reports {observed}.",
+            f"Ожидался {state.desired_value}, а монитор сообщает {observed}.",
         )
 
     def rollback(self, ctx: TweakContext, backup: BackupRecord) -> ApplyResult:
         previous = _decode(str(backup.old_value))
         if previous is None:
             return ApplyResult(
-                Outcome.FAILED, f"Saved display mode '{backup.old_value}' is unreadable."
+                Outcome.FAILED, f"Сохранённый режим «{backup.old_value}» не читается."
             )
 
         outcome = display.apply_mode(self.device_name, previous)
@@ -180,10 +180,10 @@ class SetRefreshRateTweak(Tweak):
         if restored is None or _encode(restored) != backup.old_value:
             return ApplyResult(
                 Outcome.FAILED,
-                f"Tried to restore {backup.old_value} but the display reports "
-                f"{_encode(restored) if restored else 'nothing'}.",
+                f"Пытались восстановить {backup.old_value}, а монитор сообщает "
+                f"{_encode(restored) if restored else 'ничего'}.",
             )
-        return ApplyResult(Outcome.SUCCESS, f"Display mode restored to {backup.old_value}.")
+        return ApplyResult(Outcome.SUCCESS, f"Режим монитора восстановлен: {backup.old_value}.")
 
 
 def tweaks_for_underperforming_displays(monitors) -> list[SetRefreshRateTweak]:

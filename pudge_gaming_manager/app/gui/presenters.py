@@ -21,7 +21,7 @@ from ...core.profiles.golden import ComparisonResult
 from ...core.diagnostics.network import detect_network_issues
 from ...core.types import HardwareSnapshot, NetworkSnapshot
 
-UNAVAILABLE = "UNAVAILABLE"
+UNAVAILABLE = "НЕТ ДАННЫХ"  # display value; status codes below stay English
 
 #: Vendor decoration that consumes width without informing anyone.
 _MODEL_NOISE = ("(R)", "(r)", "(TM)", "(tm)", "(C)", " CPU")
@@ -73,7 +73,7 @@ def cpu_view(snapshot: HardwareSnapshot) -> MetricView:
         f"{utilization:.0f}%",
         "GOOD" if utilization < _CPU_BUSY_WARNING else "WARNING",
         tidy_model(cpu.model),
-        f"Temperature: {cpu.temperature_c.unavailable_reason}",
+        f"Температура: {cpu.temperature_c.unavailable_reason}",
     )
 
 
@@ -86,7 +86,7 @@ def gpu_view(snapshot: HardwareSnapshot) -> MetricView:
     """
     gpu = snapshot.primary_gpu
     if gpu is None:
-        return MetricView(UNAVAILABLE, "UNAVAILABLE", "no GPU detected")
+        return MetricView(UNAVAILABLE, "UNAVAILABLE", "видеокарта не найдена")
 
     temperature = gpu.temperature_c
     vram = gpu.vram_total_mb
@@ -95,31 +95,31 @@ def gpu_view(snapshot: HardwareSnapshot) -> MetricView:
         value = temperature.display()
         status = gpu.temperature_status.value
     else:
-        value = f"{vram.value // 1024} GB" if vram.value else UNAVAILABLE
+        value = f"{vram.value // 1024} ГБ" if vram.value else UNAVAILABLE
         status = "GOOD" if vram.available else "UNAVAILABLE"
 
     parts = [tidy_model(gpu.model)]
     if gpu.utilization_percent.available:
-        parts.append(f"{gpu.utilization_percent.display()} load")
+        parts.append(f"загрузка {gpu.utilization_percent.display()}")
     if vram.available and gpu.vram_used_mb.available:
-        parts.append(f"{gpu.vram_used_mb.value // 1024}/{vram.value // 1024} GB")
+        parts.append(f"{gpu.vram_used_mb.value // 1024}/{vram.value // 1024} ГБ")
 
-    tooltip = [f"Driver {gpu.driver_version} ({gpu.driver_date})"]
+    tooltip = [f"Драйвер {gpu.driver_version} ({gpu.driver_date})"]
     if gpu.temperature_threshold is not None:
         tooltip.append(gpu.temperature_threshold.describe())
     else:
-        tooltip.append(f"Temperature: {temperature.unavailable_reason}")
+        tooltip.append(f"Температура: {temperature.unavailable_reason}")
     if gpu.power_watts.available:
         tooltip.append(
-            f"Power {gpu.power_watts.display(precision=0)} of "
+            f"Питание {gpu.power_watts.display(precision=0)} из "
             f"{gpu.power_limit_watts.display(precision=0)}"
         )
     if gpu.clock_sm_mhz.available:
         tooltip.append(
-            f"Clock {gpu.clock_sm_mhz.display()} of {gpu.max_clock_sm_mhz.display()}"
+            f"Частота {gpu.clock_sm_mhz.display()} из {gpu.max_clock_sm_mhz.display()}"
         )
     if gpu.throttle_reasons:
-        tooltip.append(f"Throttle: {', '.join(gpu.throttle_reasons)}")
+        tooltip.append(f"Троттлинг: {', '.join(gpu.throttle_reasons)}")
 
     return MetricView(value, status, " · ".join(parts), "\n".join(tooltip))
 
@@ -132,9 +132,9 @@ def ram_view(snapshot: HardwareSnapshot) -> MetricView:
         )
     usage = ram.usage_percent.value or 0.0
     return MetricView(
-        f"{(ram.used_mb.value or 0) / 1024:.1f} / {ram.total_mb.value / 1024:.1f} GB",
+        f"{(ram.used_mb.value or 0) / 1024:.1f} / {ram.total_mb.value / 1024:.1f} ГБ",
         "GOOD" if usage < _RAM_USAGE_WARNING else "WARNING",
-        f"{ram.module_count} modules · {ram.speed_mhz.display()}",
+        f"{ram.module_count} модулей · {ram.speed_mhz.display()}",
         _ram_tooltip(ram),
     )
 
@@ -153,7 +153,7 @@ def _ram_tooltip(ram: object) -> str:
 def disk_view(snapshot: HardwareSnapshot) -> MetricView:
     disk = snapshot.system_disk
     if disk is None:
-        return MetricView(UNAVAILABLE, "UNAVAILABLE", "no system disk detected")
+        return MetricView(UNAVAILABLE, "UNAVAILABLE", "системный диск не найден")
 
     free = disk.free_percent.value
     if free is None:
@@ -169,12 +169,12 @@ def disk_view(snapshot: HardwareSnapshot) -> MetricView:
     else:
         status = "CRITICAL"
 
-    tooltip = f"{disk.model}\nSMART healthy: {disk.smart_healthy.display()}"
+    tooltip = f"{disk.model}\nSMART в норме: {disk.smart_healthy.display()}"
     return MetricView(
-        f"{free:.0f}% free",
+        f"{free:.0f}% свободно",
         status,
         f"{disk.device_id} {disk.media_type} · "
-        f"{disk.free_gb.display(precision=0)} of {disk.total_gb.display(precision=0)}",
+        f"{disk.free_gb.display(precision=0)} из {disk.total_gb.display(precision=0)}",
         tooltip,
     )
 
@@ -182,15 +182,15 @@ def disk_view(snapshot: HardwareSnapshot) -> MetricView:
 def display_view(snapshot: HardwareSnapshot) -> MetricView:
     monitor = snapshot.primary_monitor
     if monitor is None or monitor.current_mode is None:
-        return MetricView(UNAVAILABLE, "UNAVAILABLE", "no display detected")
+        return MetricView(UNAVAILABLE, "UNAVAILABLE", "монитор не найден")
 
     best = monitor.max_refresh_at_current_resolution.value
     below = monitor.is_running_below_capability
     return MetricView(
-        f"{monitor.current_mode.refresh_hz} Hz",
+        f"{monitor.current_mode.refresh_hz} Гц",
         "WARNING" if below else "GOOD",
         f"{monitor.current_mode.width}x{monitor.current_mode.height}"
-        + (f" · max {best} Hz" if below else ""),
+        + (f" · макс {best} Гц" if below else ""),
         monitor.friendly_name,
     )
 
@@ -202,13 +202,13 @@ def network_view(network: NetworkSnapshot | None) -> MetricView:
     healthier (or worse) than the findings list beside it.
     """
     if network is None:
-        return MetricView(UNAVAILABLE, "UNAVAILABLE", "not scanned")
+        return MetricView(UNAVAILABLE, "UNAVAILABLE", "не сканировалось")
     if network.unavailable_reason:
         return MetricView(
-            UNAVAILABLE, "UNAVAILABLE", "could not be read", network.unavailable_reason
+            UNAVAILABLE, "UNAVAILABLE", "не удалось прочитать", network.unavailable_reason
         )
     if not network.connected:
-        return MetricView("DISCONNECTED", "CRITICAL", "no route out")
+        return MetricView("НЕТ СЕТИ", "CRITICAL", "нет маршрута наружу")
 
     uplink = network.uplink
     parts: list[str] = []
@@ -220,24 +220,24 @@ def network_view(network: NetworkSnapshot | None) -> MetricView:
     if network.gateway_ping is not None and network.gateway_ping.trustworthy:
         average = network.gateway_ping.avg_ms
         if average is not None:
-            parts.append("router <1 ms" if average < 1 else f"router {average:.0f} ms")
+            parts.append("роутер <1 мс" if average < 1 else f"роутер {average:.0f} мс")
     if network.path is None and network.gateway is None:
-        parts.append("no internet route")
+        parts.append("нет интернета")
     elif network.tunnelled and network.path is not None:
-        parts.append(f"via {network.path.name}")
+        parts.append(f"через {network.path.name}")
     elif network.internet_ping is not None and network.internet_ping.trustworthy:
         average = network.internet_ping.avg_ms
         if average is not None:
-            parts.append(f"internet {average:.0f} ms")
+            parts.append(f"интернет {average:.0f} мс")
 
     tooltip: list[str] = []
     if uplink is not None:
-        tooltip.append(f"Uplink: {uplink.name} — {uplink.description}")
+        tooltip.append(f"Подключение: {uplink.name} — {uplink.description}")
     if network.gateway:
-        tooltip.append(f"Gateway: {network.gateway}")
+        tooltip.append(f"Шлюз: {network.gateway}")
     if network.path is not None and network.tunnelled:
         tooltip.append(
-            f"Internet traffic leaves through: {network.path.name} — "
+            f"Трафик в интернет идёт через: {network.path.name} — "
             f"{network.path.description}"
         )
     for stats in (network.gateway_ping, network.internet_ping):
@@ -255,7 +255,7 @@ def network_view(network: NetworkSnapshot | None) -> MetricView:
 def _link_speed(mbps: int | None) -> str:
     if mbps is None:
         return ""
-    return f"{mbps // 1000} Gbps" if mbps >= 1000 and mbps % 1000 == 0 else f"{mbps} Mbps"
+    return f"{mbps // 1000} Гбит/с" if mbps >= 1000 and mbps % 1000 == 0 else f"{mbps} Мбит/с"
 
 
 #: Row key -> presenter, in display order.
@@ -276,7 +276,7 @@ def profile_name_from_path(path: str) -> str:
     profile name, so this needs no second prompt and cannot be rejected.
     """
     stem = pathlib.PurePath(path).stem.strip()
-    return stem[:120] or "Club profile"
+    return stem[:120] or "Профиль клуба"
 
 
 def difference_views(result: ComparisonResult) -> tuple[MetricView, ...]:
@@ -292,10 +292,10 @@ def difference_views(result: ComparisonResult) -> tuple[MetricView, ...]:
     rows: list[MetricView] = []
     for diff in result.drifted:
         hint = (
-            "PGM has a tweak for this setting; restoring from a profile is "
-            "not built yet."
+            "У PGM есть твик для этой настройки; восстановление из "
+            "профиля пока не реализовано."
             if diff.fixable
-            else "PGM cannot change this; it needs manual action."
+            else "PGM не может это изменить; нужно вручную."
         )
         rows.append(MetricView(diff.line(), "WARNING", hint, diff.detail))
     for diff in result.unknown:

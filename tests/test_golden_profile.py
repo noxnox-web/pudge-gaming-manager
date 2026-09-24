@@ -154,7 +154,7 @@ def test_unreadable_value_is_unknown_not_drift() -> None:
     result = golden.compare(profile, _snapshot(ram=RamInfo()))
     assert not result.drifted
     assert len(result.unknown) == 1
-    assert "could not" in result.unknown[0].detail.lower()
+    assert "не удалось" in result.unknown[0].detail.lower()
 
 
 def test_empty_profile_checks_nothing_and_matches() -> None:
@@ -352,7 +352,7 @@ def test_rejection_message_is_actionable(tmp_path: pathlib.Path) -> None:
     with pytest.raises(ProfileSchemaError) as excinfo:
         storage.load(path)
     assert excinfo.value.remedy
-    assert "Reason:" in excinfo.value.user_message()
+    assert "Причина:" in excinfo.value.user_message()
 
 
 # -- hostile files stay inside the ProfileSchemaError contract (finding 11) -

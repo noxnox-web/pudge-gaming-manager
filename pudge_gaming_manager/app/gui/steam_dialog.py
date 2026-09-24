@@ -32,7 +32,7 @@ class SteamResetDialog(QDialog):
 
     def __init__(self, plan: WipePlan, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Reset Steam games")
+        self.setWindowTitle("Очистка Стима")
         self.setMinimumSize(680, 500)
         self.setStyleSheet(theme.stylesheet())
         self._plan = plan
@@ -42,11 +42,11 @@ class SteamResetDialog(QDialog):
         layout.setSpacing(12)
 
         if not plan.has_changes:
-            title = "Nothing to remove"
+            title = "Удалять нечего"
         elif plan.remove:
-            title = f"Remove {len(plan.remove)} game(s), free {plan.size_display}"
+            title = f"Удалить игр: {len(plan.remove)}, освободить {plan.size_display}"
         else:
-            title = f"Clear Steam caches and sign out, free {plan.size_display}"
+            title = f"Очистить кэш и выйти из аккаунтов, освободить {plan.size_display}"
         heading = QLabel(title)
         heading.setObjectName("Title")
         layout.addWidget(heading)
@@ -54,17 +54,17 @@ class SteamResetDialog(QDialog):
         signout_note = ""
         if plan.signout:
             remembered = (
-                f" ({plan.accounts} remembered on this PC)" if plan.accounts else ""
+                f" (на ПК запомнено: {plan.accounts})" if plan.accounts else ""
             )
             signout_note = (
-                f" Every Steam account will be signed out{remembered} — "
-                "players must enter their password again."
+                f" Из всех аккаунтов Steam выполнится выход{remembered} — "
+                "игрокам придётся снова ввести пароль."
             )
         subtitle = QLabel(
-            f"{len(plan.keep)} game(s) will be kept. Removing a game deletes "
-            "it from disk — this cannot be undone, and Steam must re-download "
-            "it to reinstall. Workshop content is cleared for every game."
-            f"{signout_note} Nothing has been changed yet."
+            f"Сохранится игр: {len(plan.keep)}. Удаление игры стирает её с "
+            "диска — это необратимо, Steam скачает её заново при переустановке. "
+            "Контент Мастерской очищается для всех игр."
+            f"{signout_note} Пока ничего не изменено."
         )
         subtitle.setObjectName("Subtitle")
         subtitle.setWordWrap(True)
@@ -79,11 +79,12 @@ class SteamResetDialog(QDialog):
 
         buttons = QDialogButtonBox()
         self._remove = buttons.addButton(
-            "Reset Steam", QDialogButtonBox.ButtonRole.AcceptRole
+            "Очистить", QDialogButtonBox.ButtonRole.AcceptRole
         )
         self._remove.setObjectName("Primary")
         self._remove.setEnabled(plan.has_changes)
         cancel = buttons.addButton(QDialogButtonBox.StandardButton.Cancel)
+        cancel.setText("Отмена")
         cancel.setObjectName("Secondary")
         # Cancel is the default: a stray Enter must not delete games.
         cancel.setDefault(True)
@@ -124,14 +125,14 @@ class SteamResetDialog(QDialog):
             item.setCheckState(Qt.CheckState.Checked)
             rows.addItem(item)
         for game in self._plan.keep:
-            item = QListWidgetItem(f"keep     {game.size_display:>10}   {game.name}")
+            item = QListWidgetItem(f"оставить {game.size_display:>10}   {game.name}")
             item.setForeground(Qt.GlobalColor.gray)
             rows.addItem(item)
         if self._plan.caches:
             total = format_size(self._plan.cache_bytes)
             item = QListWidgetItem(
-                f"cache    {total:>10}   Steam caches "
-                f"({len(self._plan.caches)} folder(s))"
+                f"кэш      {total:>10}   Кэш Steam "
+                f"(папок: {len(self._plan.caches)})"
             )
             item.setForeground(Qt.GlobalColor.gray)
             item.setToolTip(
@@ -141,8 +142,8 @@ class SteamResetDialog(QDialog):
         if self._plan.signout:
             total = format_size(self._plan.signout_bytes)
             item = QListWidgetItem(
-                f"sign out {total:>10}   All Steam accounts "
-                "(account list, saved tokens, web cookies)"
+                f"выход    {total:>10}   Все аккаунты Steam "
+                "(список аккаунтов, токены, куки)"
             )
             item.setForeground(Qt.GlobalColor.white)
             item.setToolTip(
@@ -156,7 +157,7 @@ class SteamResultDialog(QDialog):
 
     def __init__(self, result: WipeResult, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Steam reset complete")
+        self.setWindowTitle("Очистка Стима завершена")
         self.setMinimumSize(600, 380)
         self.setStyleSheet(theme.stylesheet())
 
@@ -165,20 +166,20 @@ class SteamResultDialog(QDialog):
         layout.setSpacing(12)
 
         heading = QLabel(
-            f"Removed {result.removed_games} game(s), freed {result.size_display}"
+            f"Удалено игр: {result.removed_games}, освобождено {result.size_display}"
         )
         heading.setObjectName("Title")
         layout.addWidget(heading)
 
         if result.signed_out:
-            done = QLabel("All Steam accounts were signed out.")
+            done = QLabel("Из всех аккаунтов Steam выполнен выход.")
             done.setObjectName("ScoreNote")
             layout.addWidget(done)
 
         if not result.steam_stopped:
             note = QLabel(
-                "Steam was not running, or could not be stopped. Games that "
-                "were in use may have been kept."
+                "Steam не был запущен или его не удалось остановить. Игры, "
+                "которые были заняты, могли остаться."
             )
             note.setObjectName("ScoreNote")
             note.setWordWrap(True)
@@ -189,17 +190,17 @@ class SteamResultDialog(QDialog):
         detail.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         detail.setSelectionMode(QListWidget.SelectionMode.NoSelection)
         for line in result.refused:
-            detail.addItem(QListWidgetItem(f"kept (safety): {line}"))
+            detail.addItem(QListWidgetItem(f"оставлено (защита): {line}"))
         for line in result.failed:
-            detail.addItem(QListWidgetItem(f"failed: {line}"))
+            detail.addItem(QListWidgetItem(f"ошибка: {line}"))
         if not result.refused and not result.failed:
-            detail.addItem(QListWidgetItem("Every planned game was removed."))
+            detail.addItem(QListWidgetItem("Все запланированные игры удалены."))
         layout.addWidget(detail, stretch=1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        buttons.button(QDialogButtonBox.StandardButton.Close).setObjectName(
-            "Secondary"
-        )
+        close_btn = buttons.button(QDialogButtonBox.StandardButton.Close)
+        close_btn.setObjectName("Secondary")
+        close_btn.setText("Закрыть")
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)
         layout.addWidget(buttons)

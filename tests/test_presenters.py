@@ -88,7 +88,7 @@ def test_unreadable_network_row_says_so() -> None:
 
 def test_disconnected_network_row_is_critical() -> None:
     view = presenters.network_view(NetworkSnapshot())
-    assert (view.value, view.status) == ("DISCONNECTED", "CRITICAL")
+    assert (view.value, view.status) == ("НЕТ СЕТИ", "CRITICAL")
 
 
 def test_tunnelled_network_row_leads_with_the_real_link() -> None:
@@ -101,12 +101,12 @@ def test_tunnelled_network_row_leads_with_the_real_link() -> None:
                                 unreliable_reason="the tunnel answers ping"),
     )
     view = presenters.network_view(network)
-    assert view.value == "1 Gbps"  # not the tunnel's 100 Gbps
-    assert "via DurevVPN" in view.detail
-    assert "router <1 ms" in view.detail
+    assert view.value == "1 Гбит/с"  # not the tunnel's 100 Gbps
+    assert "через DurevVPN" in view.detail
+    assert "роутер <1 мс" in view.detail
     # Status matches the findings list: the tunnel is a warning there.
     assert view.status == "WARNING"
-    assert "not measurable" in view.tooltip
+    assert "не измеряется" in view.tooltip or "not measurable" in view.tooltip
 
 
 def test_unreadable_disk_does_not_render_as_full() -> None:
@@ -149,7 +149,7 @@ def test_gpu_temperature_graded_by_the_vendor_threshold() -> None:
 
 def test_gpu_tooltip_cites_the_vendor_threshold() -> None:
     view = presenters.gpu_view(_snapshot(gpus=(_gpu_with_temperature(41.0),)))
-    assert "vendor limit" in view.tooltip
+    assert "предел производителя" in view.tooltip
 
 
 def test_gpu_falls_back_to_vram_without_telemetry() -> None:
@@ -160,7 +160,7 @@ def test_gpu_falls_back_to_vram_without_telemetry() -> None:
         temperature_c=Reading.unavailable("no documented interface", unit="°C"),
     )
     view = presenters.gpu_view(_snapshot(gpus=(gpu,)))
-    assert view.value == "16 GB"
+    assert view.value == "16 ГБ"
     assert "no documented interface" in view.tooltip
 
 
@@ -203,8 +203,8 @@ def test_display_at_maximum_is_good() -> None:
     )
     view = presenters.display_view(_snapshot(monitors=(monitor,)))
     assert view.status == "GOOD"
-    assert "240 Hz" in view.value
-    assert "max" not in view.detail
+    assert "240 Гц" in view.value
+    assert "макс" not in view.detail
 
 
 def test_display_below_capability_warns_and_names_the_maximum() -> None:
@@ -215,7 +215,7 @@ def test_display_below_capability_warns_and_names_the_maximum() -> None:
     )
     view = presenters.display_view(_snapshot(monitors=(monitor,)))
     assert view.status == "WARNING"
-    assert "max 240 Hz" in view.detail
+    assert "макс 240 Гц" in view.detail
 
 
 def test_every_metric_key_has_a_presenter() -> None:
@@ -254,5 +254,5 @@ def test_difference_views_put_drift_first_and_grey_out_unknowns() -> None:
     assert [v.status for v in views] == ["WARNING", "UNAVAILABLE"]
     # Must not promise a button that does not act on profile drift.
     assert "OPTIMIZE" not in views[0].detail
-    assert "not built" in views[0].detail
-    assert "could not be checked" in views[1].value
+    assert "не реализовано" in views[0].detail
+    assert "не удалось проверить" in views[1].value

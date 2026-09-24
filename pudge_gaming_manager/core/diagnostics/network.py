@@ -39,12 +39,12 @@ def detect_network_issues(network: NetworkSnapshot) -> list[Issue]:
         return [
             Issue(
                 id="network.disconnected",
-                title="No network connection",
-                detail="Windows has no active network adapter with a route out.",
+                title="Нет сетевого подключения",
+                detail="У Windows нет активного адаптера с маршрутом наружу.",
                 severity=Severity.CRITICAL,
                 subsystem="network",
                 fixable=False,
-                fix_hint="Check the cable, the switch port and the adapter driver.",
+                fix_hint="Проверьте кабель, порт коммутатора и драйвер адаптера.",
             )
         ]
 
@@ -53,17 +53,17 @@ def detect_network_issues(network: NetworkSnapshot) -> list[Issue]:
         issues.append(
             Issue(
                 id="network.no_default_route",
-                title="No route to the internet",
+                title="Нет маршрута в интернет",
                 detail=(
-                    "The network card is connected, but Windows has no default "
-                    "gateway, so nothing beyond the local network is reachable. "
-                    "That is expected on a LAN-only event; otherwise the router "
-                    "or DHCP did not hand out a gateway."
+                    "Сетевая карта подключена, но у Windows нет шлюза по умолчанию, "
+                    "поэтому за пределами локальной сети ничего недоступно. "
+                    "Это нормально для LAN-турнира; иначе роутер или DHCP "
+                    "не выдали шлюз."
                 ),
                 severity=Severity.WARNING,
                 subsystem="network",
                 fixable=False,
-                fix_hint="Check the router and that this PC gets its address by DHCP.",
+                fix_hint="Проверьте роутер и что ПК получает адрес по DHCP.",
             )
         )
     issues.extend(_link_issues(network))
@@ -83,16 +83,16 @@ def _link_issues(network: NetworkSnapshot) -> list[Issue]:
         found.append(
             Issue(
                 id="network.wireless",
-                title="This PC is on Wi-Fi",
+                title="Этот ПК на Wi-Fi",
                 detail=(
-                    f"{uplink.name} ({uplink.description}) is a wireless link. "
-                    "Wi-Fi shares airtime with every nearby device, which shows "
-                    "up in games as latency spikes a cable does not have."
+                    f"{uplink.name} ({uplink.description}) — беспроводной канал. "
+                    "Wi-Fi делит эфир со всеми устройствами рядом, что в играх "
+                    "проявляется скачками задержки, которых нет на кабеле."
                 ),
                 severity=Severity.WARNING,
                 subsystem="network",
                 fixable=False,
-                fix_hint="Connect the PC with an Ethernet cable.",
+                fix_hint="Подключите ПК кабелем Ethernet.",
                 threshold_kind=_HEURISTIC,
             )
         )
@@ -102,16 +102,16 @@ def _link_issues(network: NetworkSnapshot) -> list[Issue]:
         found.append(
             Issue(
                 id="network.link_speed",
-                title=f"Ethernet link is running at {speed} Mbps",
+                title=f"Ethernet работает на {speed} Мбит/с",
                 detail=(
-                    f"{uplink.name} negotiated {speed} Mbps. On a gigabit "
-                    "network this usually means a damaged cable, a cable with "
-                    "only two pairs wired, or a 100 Mbps switch port."
+                    f"{uplink.name} согласовал {speed} Мбит/с. В гигабитной сети "
+                    "это обычно повреждённый кабель, кабель с двумя парами "
+                    "или порт коммутатора на 100 Мбит/с."
                 ),
                 severity=Severity.WARNING,
                 subsystem="network",
                 fixable=False,
-                fix_hint="Replace the patch cable or try another switch port.",
+                fix_hint="Замените патч-корд или попробуйте другой порт коммутатора.",
                 threshold_kind=_HEURISTIC,
             )
         )
@@ -120,16 +120,16 @@ def _link_issues(network: NetworkSnapshot) -> list[Issue]:
         found.append(
             Issue(
                 id="network.half_duplex",
-                title="Ethernet link is half duplex",
+                title="Ethernet работает в полудуплексе",
                 detail=(
-                    f"{uplink.name} can send or receive, but not both at once. "
-                    "That is a negotiation fault, and it causes collisions and "
-                    "retransmits under load."
+                    f"{uplink.name} может передавать или принимать, но не одновременно. "
+                    "Это ошибка согласования; под нагрузкой вызывает коллизии и "
+                    "повторные передачи."
                 ),
                 severity=Severity.WARNING,
                 subsystem="network",
                 fixable=False,
-                fix_hint="Set the adapter and switch port to auto-negotiate.",
+                fix_hint="Включите автосогласование на адаптере и порту коммутатора.",
             )
         )
     return found
@@ -142,18 +142,18 @@ def _path_issues(network: NetworkSnapshot) -> list[Issue]:
     return [
         Issue(
             id="network.tunnelled",
-            title=f"Internet traffic goes through '{path.name}'",
+            title=f"Трафик в интернет идёт через «{path.name}»",
             detail=(
-                f"Windows routes internet traffic through {path.name} "
-                f"({path.description}), a virtual adapter, rather than the "
-                "network card. That is typically a VPN or tunnel; game traffic "
-                "then takes the tunnel's route and latency. Ignore this if it "
-                "is intended."
+                f"Windows направляет интернет-трафик через {path.name} "
+                f"({path.description}) — виртуальный адаптер, а не сетевую "
+                "карту. Обычно это VPN или туннель; тогда игровой трафик идёт "
+                "маршрутом и с задержкой туннеля. Игнорируйте, если так "
+                "задумано."
             ),
             severity=Severity.WARNING,
             subsystem="network",
             fixable=False,
-            fix_hint="Disconnect the VPN or exclude games from it.",
+            fix_hint="Отключите VPN или исключите из него игры.",
             threshold_kind=_HEURISTIC,
         )
     ]
@@ -171,11 +171,11 @@ def _gateway_issues(network: NetworkSnapshot) -> list[Issue]:
         found.append(
             Issue(
                 id="network.gateway_loss",
-                title=f"{loss:.0f}% packet loss to the router",
+                title=f"Потери пакетов до роутера: {loss:.0f}%",
                 detail=(
-                    f"{stats.received} of {stats.sent} echoes to the gateway "
-                    f"{stats.target} came back. Loss on the first hop points at "
-                    "the cable, the switch or the router, not the internet."
+                    f"Вернулось {stats.received} из {stats.sent} эхо-запросов к шлюзу "
+                    f"{stats.target}. Потери на первом узле указывают на "
+                    "кабель, коммутатор или роутер, а не на интернет."
                 ),
                 severity=(
                     Severity.CRITICAL
@@ -184,7 +184,7 @@ def _gateway_issues(network: NetworkSnapshot) -> list[Issue]:
                 ),
                 subsystem="network",
                 fixable=False,
-                fix_hint="Check the cable and switch port for this PC.",
+                fix_hint="Проверьте кабель и порт коммутатора этого ПК.",
                 threshold_kind=_HEURISTIC,
             )
         )
@@ -195,16 +195,16 @@ def _gateway_issues(network: NetworkSnapshot) -> list[Issue]:
         found.append(
             Issue(
                 id="network.gateway_latency",
-                title=f"Router responds in {average:.0f} ms",
+                title=f"Роутер отвечает за {average:.0f} мс",
                 detail=(
-                    f"The gateway {stats.target} averages {average:.0f} ms "
-                    f"(max {stats.max_ms:.0f} ms). A local hop should take a "
-                    f"few milliseconds at most (heuristic limit {limit:.0f} ms)."
+                    f"Шлюз {stats.target} отвечает в среднем за {average:.0f} мс "
+                    f"(макс {stats.max_ms:.0f} мс). Локальный узел должен "
+                    f"отвечать за единицы миллисекунд (эвристический предел {limit:.0f} мс)."
                 ),
                 severity=Severity.WARNING,
                 subsystem="network",
                 fixable=False,
-                fix_hint="Check for a saturated or overloaded router.",
+                fix_hint="Проверьте, не перегружен ли роутер.",
                 threshold_kind=_HEURISTIC,
             )
         )
@@ -218,16 +218,16 @@ def _internet_issues(stats: PingStats | None) -> list[Issue]:
         return [
             Issue(
                 id="network.internet_unreachable",
-                title="No reply from the internet",
+                title="Нет ответа из интернета",
                 detail=(
-                    f"{stats.label} did not answer {stats.sent} echoes. Either "
-                    "the internet is unreachable from this PC, or this network "
-                    "blocks ping — this check cannot tell which."
+                    f"{stats.label} не ответил на {stats.sent} эхо-запросов. Либо "
+                    "интернет недоступен с этого ПК, либо сеть блокирует ping — "
+                    "эта проверка не может отличить одно от другого."
                 ),
                 severity=Severity.WARNING,
                 subsystem="network",
                 fixable=False,
-                fix_hint="Open a website to see whether the internet works.",
+                fix_hint="Откройте сайт, чтобы проверить интернет.",
             )
         ]
 
@@ -237,7 +237,7 @@ def _internet_issues(stats: PingStats | None) -> list[Issue]:
             _internet_issue(
                 "network.internet_loss",
                 f"{stats.loss_percent:.0f}% packet loss to the internet",
-                f"{stats.received} of {stats.sent} echoes to {stats.label} came back.",
+                f"Вернулось {stats.received} из {stats.sent} эхо-запросов к {stats.label}.",
             )
         )
     jitter = stats.jitter_ms
@@ -245,9 +245,9 @@ def _internet_issues(stats: PingStats | None) -> list[Issue]:
         found.append(
             _internet_issue(
                 "network.internet_jitter",
-                f"Unstable latency: {jitter:.0f} ms jitter",
-                f"Round trips to {stats.label} vary by {jitter:.0f} ms on "
-                "average between consecutive echoes.",
+                f"Нестабильная задержка: джиттер {jitter:.0f} мс",
+                f"Задержка до {stats.label} колеблется в среднем на {jitter:.0f} мс "
+                "между соседними запросами.",
             )
         )
     average = stats.avg_ms
@@ -255,10 +255,10 @@ def _internet_issues(stats: PingStats | None) -> list[Issue]:
         found.append(
             _internet_issue(
                 "network.internet_latency",
-                f"High latency to the internet: {average:.0f} ms",
-                f"{stats.label} averages {average:.0f} ms. It is a reference "
-                "point, not a game server, but a slow path to it is usually a "
-                "slow path everywhere.",
+                f"Высокая задержка до интернета: {average:.0f} мс",
+                f"{stats.label} отвечает в среднем за {average:.0f} мс. Это опорная "
+                "точка, не игровой сервер, но медленный путь до неё обычно "
+                "означает медленный путь везде.",
             )
         )
     return found
@@ -272,6 +272,6 @@ def _internet_issue(issue_id: str, title: str, detail: str) -> Issue:
         severity=Severity.WARNING,
         subsystem="network",
         fixable=False,
-        fix_hint="Check the club's uplink and whether other PCs are affected.",
+        fix_hint="Проверьте канал клуба и затронуты ли другие ПК.",
         threshold_kind=_HEURISTIC,
     )

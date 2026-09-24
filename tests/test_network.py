@@ -99,7 +99,7 @@ def test_measure_gives_up_on_a_silent_target() -> None:
     stats = _measure(echo, count=10, give_up_after=3)
     assert stats.sent == 3
     assert not stats.reachable
-    assert "no reply" in stats.summary()
+    assert "нет ответа" in stats.summary()
 
 
 def test_late_loss_does_not_trigger_the_early_exit() -> None:
@@ -112,7 +112,7 @@ def test_canary_reply_marks_the_path_as_fabricating() -> None:
     echo = _ScriptedEcho({icmp.UNROUTABLE_CANARY: [0.0], "1.1.1.1": [0.0] * 10})
     stats = _measure(echo, canary=True)
     assert not stats.trustworthy
-    assert "unroutable" in stats.summary()
+    assert "не маршрутизируется" in stats.summary()
     assert echo.calls == [icmp.UNROUTABLE_CANARY]  # target never measured
 
 
@@ -124,7 +124,7 @@ def test_silent_canary_lets_the_measurement_proceed() -> None:
 
 
 def test_sub_millisecond_is_not_shown_as_zero() -> None:
-    assert _ping("gateway", (0.0, 0.0)).summary().startswith("<1 ms")
+    assert _ping("gateway", (0.0, 0.0)).summary().startswith("<1 мс")
 
 
 def test_ping_target_must_be_an_ipv4_literal() -> None:
@@ -312,7 +312,7 @@ def test_unreachable_internet_says_it_cannot_tell_why() -> None:
         _network(internet_ping=_ping("internet reference", (), sent=3))
     )
     unreachable = next(i for i in issues if i.id == "network.internet_unreachable")
-    assert "cannot tell" in unreachable.detail
+    assert "не может отличить" in unreachable.detail
 
 
 def test_fabricated_internet_replies_produce_no_latency_findings() -> None:
@@ -359,7 +359,7 @@ def test_fabricated_replies_neither_help_nor_hurt() -> None:
     fake = _ping("internet reference", (900.0,) * 10, unreliable_reason="tunnel")
     component = score_network(_network(internet_ping=fake), 15)
     assert component.score == pytest.approx(100)
-    assert "not measurable" in component.explanation
+    assert "не измеряется" in component.explanation
 
 
 def test_loss_is_penalised() -> None:
@@ -425,7 +425,7 @@ def test_router_ping_through_a_tunnel_is_not_trusted() -> None:
     network = NetworkScanner(_FakePowerShell(_rows_with_via(12)), ping=fake_ping).scan()
     assert network.gateway_ping is not None
     assert not network.gateway_ping.trustworthy
-    assert "another adapter" in network.gateway_ping.summary()
+    assert "другой адаптер" in network.gateway_ping.summary()
     # An untrusted measurement produces no latency finding either way.
     assert "network.gateway_loss" not in _ids(network)
 

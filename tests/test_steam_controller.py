@@ -8,9 +8,7 @@ to close mid-wipe.
 
 from __future__ import annotations
 
-import json
 import os
-import pathlib
 import threading
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -56,30 +54,20 @@ def _controller(wiper: _FakeWiper) -> SteamController:
     return controller
 
 
-def _profile(tmp_path: pathlib.Path, keep: list[int]) -> str:
+def test_plan_uses_the_built_in_keep_list(app) -> None:
+    from pudge_gaming_manager.games.steam.default_keep import DEFAULT_KEEP_IDS
 
-    # Build a minimal valid profile file with a games section.
-    from pudge_gaming_manager.core.profiles.schema import GamesPolicy, GoldenProfile
-
-    profile = GoldenProfile(games=GamesPolicy(keep_steam_app_ids=tuple(keep)))
-    path = tmp_path / "club.json"
-    path.write_text(
-        json.dumps(profile.model_dump(mode="json")), encoding="utf-8"
-    )
-    return str(path)
-
-
-def test_plan_reads_the_keep_list_from_the_profile(app, tmp_path) -> None:
     wiper = _FakeWiper()
     controller = _controller(wiper)
     plans: list = []
     controller.planned.connect(plans.append)
 
-    controller.start_plan(_profile(tmp_path, [730, 570]))
+    controller.start_plan()  # no profile, no file dialog
     _wait(lambda: plans)
 
-    assert wiper.scanned_keep == {730, 570}
-    assert plans == ["plan(keep=[570, 730])"]
+    assert wiper.scanned_keep == set(DEFAULT_KEEP_IDS)
+    assert 730 in wiper.scanned_keep  # CS2 is kept by default
+    assert 228980 in wiper.scanned_keep  # Steamworks redistributables
 
 
 def test_wiping_is_true_during_wipe_and_clears_after(app) -> None:

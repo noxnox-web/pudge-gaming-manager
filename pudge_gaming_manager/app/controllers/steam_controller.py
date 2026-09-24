@@ -1,17 +1,16 @@
 """Steam reset planning and execution for the GUI.
 
 Both steps read or delete large amounts of data, so they run off the UI
-thread like the scan does. The keep-list comes from a Golden Profile the
-operator loaded: a reset never removes a game unless a profile said which
-games to keep, so a stray click cannot wipe an unconfigured PC clean.
+thread like the scan does. The keep-list is built into the program (see
+``games.steam.default_keep``); the preview then lets the operator untick any
+game, so a stray click cannot wipe a wanted title without it being seen.
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import QObject, Signal
 
-from ...core.profiles import storage
-from ...core.games import SteamWiper, WipePlan
+from ...core.games import DEFAULT_KEEP_IDS, SteamWiper, WipePlan
 from .background import BackgroundRunner
 
 
@@ -42,14 +41,16 @@ class SteamController(QObject):
         """True only while games are being deleted, for the close guard."""
         return self._wiping
 
-    def start_plan(self, profile_path: str) -> None:
-        def work() -> object:
-            # Loading validates the untrusted profile before any value is used.
-            profile = storage.load(profile_path)
-            keep = set(profile.games.keep_steam_app_ids)
-            return self._wiper.scan(keep)
+    def start_plan(self) -> None:
+        """Plan a reset against the built-in keep-list.
 
-        self._runner.start(work, self.planned.emit)
+        The keep-list is baked into the program (see ``default_keep``); the
+        preview then lets the operator untick any game before anything is
+        removed, so no profile or config file is needed.
+        """
+        self._runner.start(
+            lambda: self._wiper.scan(set(DEFAULT_KEEP_IDS)), self.planned.emit
+        )
 
     def start_wipe(self, plan: WipePlan) -> None:
         if self._runner.start(lambda: self._wiper.wipe(plan), self._on_wiped):

@@ -111,23 +111,17 @@ class ProfileAndGamesActions:
     # -- steam reset -------------------------------------------------------
 
     def _on_reset_steam(self) -> None:
-        """Plan a reset from a profile the operator chooses.
+        """Plan a reset against the built-in keep-list.
 
-        A reset needs a profile so the keep-list is explicit: without one it
-        would remove every game, so there is no "reset without a profile"
-        path by design.
+        No profile or config file: the keep-list is baked into the program
+        (``games.steam.default_keep``), and the preview then lets the
+        operator untick any game before anything is removed.
         """
         if self._steam.busy:  # type: ignore[attr-defined]
             return
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Choose the club profile (its games are kept)", "",
-            "Golden Profile (*.json)",
-        )
-        if not path:
-            return
         self._set_profile_actions(False)
         self._status.setText("Planning Steam reset…")  # type: ignore[attr-defined]
-        self._steam.start_plan(path)  # type: ignore[attr-defined]
+        self._steam.start_plan()  # type: ignore[attr-defined]
 
     def _on_steam_planned(self, plan: object) -> None:
         self._status.setText("")  # type: ignore[attr-defined]
@@ -141,9 +135,11 @@ class ProfileAndGamesActions:
         dialog = SteamResetDialog(plan, self)  # type: ignore[arg-type]
         if dialog.exec() != SteamResetDialog.DialogCode.Accepted:
             return
+        # Games the operator unticked are moved back to keep.
+        confirmed = dialog.confirmed_plan()
         self._set_profile_actions(False)
         self._status.setText("Removing games…")  # type: ignore[attr-defined]
-        self._steam.start_wipe(plan)  # type: ignore[attr-defined]
+        self._steam.start_wipe(confirmed)  # type: ignore[attr-defined]
 
     def _on_steam_wiped(self, result: object) -> None:
         self._status.setText("")  # type: ignore[attr-defined]

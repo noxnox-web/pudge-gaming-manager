@@ -359,3 +359,43 @@ def test_a_redirected_profile_steam_folder_is_skipped(tmp_path, monkeypatch) -> 
     install = _make_steam(tmp_path / "steam", {730: ("CS2", "cs2", 10)})
     labels = [t.label for t in signout.signout_targets(install)]
     assert not any("player" in label for label in labels)
+
+
+# -- built-in keep-list and preview override (no profile needed) -------------
+
+
+def test_default_keep_list_covers_popular_titles_and_the_runtime() -> None:
+    from pudge_gaming_manager.games.steam.default_keep import (
+        DEFAULT_KEEP,
+        DEFAULT_KEEP_IDS,
+    )
+
+    assert 730 in DEFAULT_KEEP_IDS  # CS2
+    assert 570 in DEFAULT_KEEP_IDS  # Dota 2
+    assert 228980 in DEFAULT_KEEP_IDS  # Steamworks Common Redistributables
+    assert set(DEFAULT_KEEP) == set(DEFAULT_KEEP_IDS)
+    assert all(isinstance(i, int) and i > 0 for i in DEFAULT_KEEP_IDS)
+
+
+def test_with_kept_back_moves_a_game_from_remove_to_keep(tmp_path) -> None:
+    _make_steam(tmp_path, {
+        730: ("CS2", "cs2", 30), 4000: ("GMod", "gmod", 10), 999: ("Indie", "indie", 5),
+    })
+    monkey_find(tmp_path)
+    plan = _wiper().scan(keep_app_ids={730})  # CS2 kept; GMod + Indie to remove
+    assert {g.app_id for g in plan.remove} == {4000, 999}
+
+    narrowed = plan.with_kept_back({999})  # operator rescues the indie game
+    assert {g.app_id for g in narrowed.remove} == {4000}
+    assert {g.app_id for g in narrowed.keep} == {730, 999}
+    # caches and sign-out are unchanged by a rescue
+    assert narrowed.caches == plan.caches
+
+
+def test_rescued_game_is_not_deleted(tmp_path) -> None:
+    install = _make_steam(tmp_path, {4000: ("GMod", "gmod", 10)})
+    monkey_find(tmp_path)
+    wiper = _wiper()
+    plan = wiper.scan(keep_app_ids=set())  # nothing kept by default
+    wiper.wipe(plan.with_kept_back({4000}))  # but the operator unticks it
+    assert (install.steamapps / "common" / "gmod").is_dir()

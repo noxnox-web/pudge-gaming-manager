@@ -23,6 +23,9 @@ from ...core.games import WipePlan, WipeResult
 from ...utilities.formatting import format_size
 from . import theme
 
+#: Item data role holding a remove-row's Steam app id.
+_APP_ID = Qt.ItemDataRole.UserRole + 1
+
 
 class SteamResetDialog(QDialog):
     """Shows the reset plan and asks for confirmation."""
@@ -67,12 +70,12 @@ class SteamResetDialog(QDialog):
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
-        rows = QListWidget()
-        rows.setWordWrap(True)
-        rows.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        rows.setSelectionMode(QListWidget.SelectionMode.NoSelection)
-        self._populate(rows)
-        layout.addWidget(rows, stretch=1)
+        self._rows = QListWidget()
+        self._rows.setWordWrap(True)
+        self._rows.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._rows.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+        self._populate(self._rows)
+        layout.addWidget(self._rows, stretch=1)
 
         buttons = QDialogButtonBox()
         self._remove = buttons.addButton(
@@ -90,14 +93,35 @@ class SteamResetDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+    def kept_back_ids(self) -> set[int]:
+        """App IDs the operator unticked — games to keep after all."""
+        kept: set[int] = set()
+        for row in range(self._rows.count()):
+            item = self._rows.item(row)
+            app_id = item.data(_APP_ID)
+            if app_id is not None and item.checkState() == Qt.CheckState.Unchecked:
+                kept.add(int(app_id))
+        return kept
+
+    def confirmed_plan(self) -> WipePlan:
+        """The plan to run: unticked games moved back to keep."""
+        return self._plan.with_kept_back(self.kept_back_ids())
+
     def _populate(self, rows: QListWidget) -> None:
         for game in sorted(
             self._plan.remove, key=lambda g: g.size_bytes or 0, reverse=True
         ):
-            item = QListWidgetItem(f"REMOVE   {game.size_display:>10}   {game.name}")
+            item = QListWidgetItem(f"{game.size_display:>10}   {game.name}")
             item.setForeground(Qt.GlobalColor.white)
             item.setData(Qt.ItemDataRole.UserRole, theme.CRITICAL)
+            item.setData(_APP_ID, game.app_id)
             item.setToolTip(f"App {game.app_id} — {game.install_path}")
+            # Ticked = this game will be removed. Untick to keep it, even if
+            # it is not in the built-in keep-list.
+            item.setFlags(
+                Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable
+            )
+            item.setCheckState(Qt.CheckState.Checked)
             rows.addItem(item)
         for game in self._plan.keep:
             item = QListWidgetItem(f"keep     {game.size_display:>10}   {game.name}")

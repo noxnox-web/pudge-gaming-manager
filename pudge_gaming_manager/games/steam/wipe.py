@@ -94,6 +94,21 @@ class WipePlan:
     def size_display(self) -> str:
         return format_size(self.total_bytes)
 
+    def with_kept_back(self, app_ids: set[int]) -> WipePlan:
+        """This plan with the given games moved from *remove* to *keep*.
+
+        The operator unticks a game in the preview to rescue it — even one
+        not in the built-in keep-list. Caches and sign-out are unchanged.
+        """
+        return WipePlan(
+            install=self.install,
+            remove=[g for g in self.remove if g.app_id not in app_ids],
+            keep=self.keep + [g for g in self.remove if g.app_id in app_ids],
+            caches=self.caches,
+            signout=self.signout,
+            accounts=self.accounts,
+        )
+
     def preview_lines(self) -> list[str]:
         lines = [
             f"{format_size(self.total_bytes)} reclaimable — "

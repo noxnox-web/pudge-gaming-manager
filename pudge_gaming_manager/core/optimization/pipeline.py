@@ -31,6 +31,7 @@ from .engine import Plan, RunReport, TweakEngine
 from .tweak import Tweak, TweakContext
 from .tweaks.cleanup import CleanTemporaryFilesTweak
 from .tweaks.display import tweaks_for_underperforming_displays
+from .tweaks.windows_old import RemoveWindowsOldTweak
 
 _log = get_logger(__name__)
 
@@ -154,6 +155,10 @@ class OptimizationPipeline:
         # Disk pressure on any drive, or simply reclaimable space worth having.
         if self._storage_needs_attention(snapshot, issues):
             tweaks.append(CleanTemporaryFilesTweak(self.cleanup_categories))
+
+        # The Windows 11 upgrade leftover, if present. The tweak scans for its
+        # own applicability, so it is always offered and self-skips elsewhere.
+        tweaks.append(RemoveWindowsOldTweak())
 
         _log.info("optimization plan: %d candidate tweaks", len(tweaks))
         return tweaks

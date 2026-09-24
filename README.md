@@ -147,7 +147,7 @@ is how a build is smoke-tested without a prompt.
 | Issue detection | Findings carry severity, remedy and threshold provenance |
 | Dashboard GUI | PySide6 dark theme; scan, optimize, profile and Steam-reset work run on worker threads; score explainer; **Save as profile… / Compare with profile… / Reset Steam games…**. A write in progress (apply or wipe) blocks the window from closing |
 
-**433 tests passing**, plus one opt-in live test that changes and restores
+**444 tests passing**, plus one opt-in live test that changes and restores
 the active power plan (`PGM_LIVE_SYSTEM_TESTS=1`).
 
 ### Running it
@@ -164,7 +164,8 @@ Per-game tuning profiles · Session mode · Benchmark · Maintenance agent ·
 Installer
 
 **`OPTIMIZE PC` acts on scan findings only** — today that means display
-refresh rate and disk cleanup. It does not act on Golden Profile drift, and
+refresh rate, disk cleanup, and (on Windows 11) removing the `Windows.old`
+upgrade-rollback folder when present. It does not act on Golden Profile drift, and
 it never changes the power plan on its own. Comparing against a profile is
 read-only: rows PGM has a tweak for say so, but restoring a profile is not
 built, and the comparison window does not pretend otherwise.

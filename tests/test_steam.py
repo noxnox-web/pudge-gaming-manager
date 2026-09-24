@@ -399,3 +399,14 @@ def test_rescued_game_is_not_deleted(tmp_path) -> None:
     plan = wiper.scan(keep_app_ids=set())  # nothing kept by default
     wiper.wipe(plan.with_kept_back({4000}))  # but the operator unticks it
     assert (install.steamapps / "common" / "gmod").is_dir()
+
+
+def test_requested_club_titles_are_in_the_keep_list() -> None:
+    from pudge_gaming_manager.games.steam.default_keep import DEFAULT_KEEP
+    wanted = {
+        570: "Dota 2", 730: "Counter-Strike 2", 1172470: "Apex Legends",
+        578080: "PUBG: BATTLEGROUNDS", 1422450: "Deadlock", 252490: "Rust",
+        3240220: "Grand Theft Auto V Enhanced", 381210: "Dead by Daylight",
+    }
+    for app_id, name in wanted.items():
+        assert app_id in DEFAULT_KEEP, name

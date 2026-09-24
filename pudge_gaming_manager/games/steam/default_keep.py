@@ -13,23 +13,32 @@ IDs (the number in a game's store URL, ``store.steampowered.com/app/<id>``).
 from __future__ import annotations
 
 #: app_id -> display name. Popular competitive and club titles, plus the
-#: shared runtime every Steam PC needs.
+#: shared runtime every Steam PC needs. IDs are verified against the Steam
+#: store (store.steampowered.com/app/<id>).
+#:
+#: Escape from Tarkov is deliberately absent: it is not on Steam (it installs
+#: through Battlestate Games' own launcher), so a Steam reset never sees or
+#: touches it — there is nothing to keep here.
 DEFAULT_KEEP: dict[int, str] = {
     228980: "Steamworks Common Redistributables",  # shared runtime — never a game
-    730: "Counter-Strike 2",
+    # -- explicitly requested for club PCs --
     570: "Dota 2",
+    730: "Counter-Strike 2",
+    1172470: "Apex Legends",
+    578080: "PUBG: BATTLEGROUNDS",
+    1422450: "Deadlock",
+    252490: "Rust",
+    3240220: "Grand Theft Auto V Enhanced",
+    271590: "Grand Theft Auto V",  # legacy edition, kept if still installed
+    381210: "Dead by Daylight",
+    # -- other common club titles --
     440: "Team Fortress 2",
     550: "Left 4 Dead 2",
     4000: "Garry's Mod",
-    252490: "Rust",
-    271590: "Grand Theft Auto V",
-    578080: "PUBG: BATTLEGROUNDS",
-    1172470: "Apex Legends",
     359550: "Rainbow Six Siege",
     252950: "Rocket League",
     230410: "Warframe",
     236390: "War Thunder",
-    381210: "Dead by Daylight",
     105600: "Terraria",
     892970: "Valheim",
     1085660: "Destiny 2",

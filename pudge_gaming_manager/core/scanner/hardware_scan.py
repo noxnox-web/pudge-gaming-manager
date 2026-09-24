@@ -90,14 +90,43 @@ class HardwareScanner:
     ) -> None:
         self.runner = runner or CommandRunner()
         self.powershell = powershell or PowerShellRunner(runner=self.runner)
+        self._inventory: dict[str, list[dict[str, Any]]] | None = None
+        """The last successful inventory, or None before the first scan.
 
-    def scan(self) -> HardwareSnapshot:
-        """Run a full hardware scan.
+        One scanner is shared between the dashboard's scan controller and
+        the optimize controller, which run on different worker threads, so
+        two scans can touch this at once. That is safe without a lock and
+        deliberately so: the dict is built complete in ``_fetch_cim`` and
+        never mutated afterwards, and rebinding a name is atomic under the
+        GIL. A concurrent reader therefore sees either the previous
+        inventory or the new one, both of which are whole and valid — never
+        a half-filled dict. Adding a lock here would buy nothing and would
+        make a scan able to block another one.
+        """
+
+    def scan(self, *, reuse_inventory: bool = False) -> HardwareSnapshot:
+        """Run a hardware scan.
 
         Never raises for a partially-unavailable system. A probe that fails
         contributes a warning and leaves its values unavailable, because a
         scan that returns nothing is less useful than one that returns most
         things and says what is missing.
+
+        Args:
+            reuse_inventory: Reuse the *inventory* from the previous scan —
+                which CPU, how many memory modules, each disk's model and
+                SMART verdict — instead of asking PowerShell for it again.
+                That one call is 2.3 of the 2.4 seconds a scan takes, and
+                what it returns is the hardware's identity, which does not
+                change while the window is open.
+
+                Every **measurement** is still taken fresh: processor load,
+                GPU temperature, free disk space, the current display mode.
+                Nothing carried over is a reading, so a refreshed snapshot
+                never shows a stale number as if it had just been taken
+                (rule #40). Hardware genuinely appearing mid-session — a
+                monitor plugged in, a drive attached — is what the explicit
+                rescan is for, and that always does the full call.
         """
         started = time.monotonic()
         warnings: list[str] = []
@@ -109,7 +138,12 @@ class HardwareScanner:
         # than a blocking sleep or a fabricated zero.
         probes.prime_cpu_sampler()
 
-        cim = self._fetch_cim(warnings)
+        if reuse_inventory and self._inventory is not None:
+            cim = self._inventory
+        else:
+            cim = self._fetch_cim(warnings)
+            if cim:
+                self._inventory = cim
 
         os_info = probes.scan_os()
         cpu = self._safe(
@@ -146,8 +180,9 @@ class HardwareScanner:
         duration = time.monotonic() - started
         _log.info(
             "hardware scan finished in %.2fs (%d GPU, %d disk, %d monitor, "
-            "%d warning)",
+            "%d warning, inventory %s)",
             duration, len(gpus), len(disks), len(monitors), len(warnings),
+            "reused" if reuse_inventory and self._inventory is cim else "read",
         )
 
         return HardwareSnapshot(

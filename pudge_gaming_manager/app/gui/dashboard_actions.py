@@ -222,9 +222,11 @@ class ProfileAndGamesActions:
         self._status.setText("")  # type: ignore[attr-defined]
         self._set_profile_actions(True)
         CleanupResultDialog(result, self).exec()  # type: ignore[arg-type]
-        # Free space changed, so the dashboard's disk figure and score are
-        # now stale. Re-measure rather than leaving a number nobody took.
-        self._controller.start()  # type: ignore[attr-defined]
+        # Free space changed, so the disk figure and the score are stale.
+        # Re-measure rather than leaving a number nobody took — but only
+        # measure: a cleanup cannot change which CPU is installed or the
+        # latency to the router, and re-reading those cost four seconds.
+        self._controller.refresh()  # type: ignore[attr-defined]
 
     def _on_cleanup_failed(self, message: str) -> None:
         self._status.setText("")  # type: ignore[attr-defined]

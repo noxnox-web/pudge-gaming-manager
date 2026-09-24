@@ -34,8 +34,13 @@ class OptimizeController(QObject):
         self,
         pipeline: OptimizationPipeline | None = None,
         parent: QObject | None = None,
+        scanner: HardwareScanner | None = None,
     ) -> None:
         super().__init__(parent)
+        # Shared with the dashboard's scan controller so the after-state
+        # measurement reuses the inventory that scan already read, instead
+        # of spending another 2.3 s in PowerShell asking the same question.
+        self._scanner = scanner or HardwareScanner()
         # The GUI asks core for a working pipeline rather than opening a
         # database itself; storage lifetime is not a view concern.
         self._pipeline = pipeline or create_optimization_pipeline()
@@ -66,10 +71,16 @@ class OptimizeController(QObject):
             self.preview_started.emit()
 
     def start_apply(self, preview: OptimizationPreview) -> None:
-        # The after-state is measured by a real rescan, so the report never
-        # attributes an unmeasured change to the optimization.
+        # The after-state is a real measurement, so the report never
+        # attributes an unmeasured change to the optimization. Only the
+        # inventory is reused: load, temperatures, free space and the
+        # display mode are all read again, which is exactly what a tweak
+        # could have moved.
         if self._runner.start(
-            lambda: self._pipeline.apply(preview, rescan=HardwareScanner().scan),
+            lambda: self._pipeline.apply(
+                preview,
+                rescan=lambda: self._scanner.scan(reuse_inventory=True),
+            ),
             self._on_applied,
         ):
             self._applying = True

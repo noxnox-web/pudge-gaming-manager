@@ -1,8 +1,24 @@
 """Scan orchestration for the GUI.
 
-The scan takes ~3 seconds, which is far too long to run on the UI thread — a
-frozen window on a club PC looks like a crashed program. It runs on a
-``QThread`` worker and reports back by signal.
+A full scan takes ~4 seconds, far too long for the UI thread — a frozen
+window on a club PC looks like a crashed program. It runs on a ``QThread``
+worker and reports back by signal.
+
+Full scan versus refresh
+------------------------
+Most of those 4 seconds are two PowerShell calls: the hardware inventory
+(~2.3 s) and the routing query (~2.9 s, run beside it). Both answer
+questions that applying a change cannot have altered. Deleting temporary
+files does not change which CPU is installed, and it certainly does not
+change the ping to the router.
+
+So there are two modes. :meth:`ScanController.start` is the full scan: the
+window opens with one, and the rescan button asks for one. After an action
+the dashboard calls :meth:`ScanController.refresh`, which re-measures
+everything live — processor load, GPU temperature, free space, the current
+display mode — while reusing the hardware inventory and carrying the
+previous network reading forward untouched. That is ~70 ms instead of
+~4 000 ms, and no value is presented as freshly measured unless it was.
 
 This module is the boundary: it calls ``core`` and knows nothing about how
 the data is obtained.
@@ -52,28 +68,54 @@ class ScanWorker(QObject):
         self,
         scanner: HardwareScanner | None = None,
         network_scanner: NetworkScanner | None = None,
+        *,
+        quick: bool = False,
+        previous_network: NetworkSnapshot | None = None,
     ) -> None:
         super().__init__()
         self._scanner = scanner or HardwareScanner()
         self._network_scanner = network_scanner or NetworkScanner()
+        self._quick = quick
+        self._previous_network = previous_network
 
     def run(self) -> None:
         try:
-            self.progress.emit("Чтение железа и сети…")
-            # Independent and both ~3 s, so they run side by side. The
-            # network scan never raises; its failures come back as data.
-            with ThreadPoolExecutor(max_workers=1) as pool:
-                network_job = pool.submit(self._network_scanner.scan)
-                snapshot = self._scanner.scan()
-                network = network_job.result()
-
-            self.progress.emit("Analysing…")
-            issues = tuple(detect_issues(snapshot, network))
-            score = compute_score(snapshot, network=network)
-
-            self.finished.emit(ScanResult(snapshot, score, issues, network))
+            if self._quick:
+                self._run_refresh()
+            else:
+                self._run_full()
         except Exception as exc:  # noqa: BLE001
             self.failed.emit(readable_error(exc))
+
+    def _run_full(self) -> None:
+        self.progress.emit("Чтение железа и сети…")
+        # Independent and both ~3 s, so they run side by side. The network
+        # scan never raises; its failures come back as data.
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            network_job = pool.submit(self._network_scanner.scan)
+            snapshot = self._scanner.scan()
+            network = network_job.result()
+        self._publish(snapshot, network)
+
+    def _run_refresh(self) -> None:
+        """Re-measure what an action can change, and nothing else.
+
+        The network is not re-scanned and not re-labelled: the snapshot
+        carried forward is the one the last full scan took, exactly as the
+        dashboard has been displaying it since. Claiming a fresh ping here
+        would be inventing a measurement nobody made.
+        """
+        self.progress.emit("Обновление показаний…")
+        snapshot = self._scanner.scan(reuse_inventory=True)
+        self._publish(snapshot, self._previous_network)
+
+    def _publish(
+        self, snapshot: HardwareSnapshot, network: NetworkSnapshot | None
+    ) -> None:
+        self.progress.emit("Анализ…")
+        issues = tuple(detect_issues(snapshot, network))
+        score = compute_score(snapshot, network=network)
+        self.finished.emit(ScanResult(snapshot, score, issues, network))
 
 
 class ScanController(QObject):
@@ -88,18 +130,52 @@ class ScanController(QObject):
         super().__init__(parent)
         self._thread: QThread | None = None
         self._worker: ScanWorker | None = None
+        # One scanner for the controller's lifetime, not one per worker:
+        # it is what holds the cached hardware inventory, and a scanner
+        # built per scan would have nothing to reuse.
+        self._scanner = HardwareScanner()
+        self._last_network: NetworkSnapshot | None = None
 
     @property
     def busy(self) -> bool:
         return self._thread is not None and self._thread.isRunning()
 
+    @property
+    def scanner(self) -> HardwareScanner:
+        """The scanner holding the cached inventory.
+
+        Shared with the optimize controller so its after-state measurement
+        reuses what this one already read, rather than paying for the
+        PowerShell inventory call a second time in the same operation.
+        """
+        return self._scanner
+
     def start(self) -> None:
-        """Begin a scan. Ignored when one is already running."""
+        """Begin a full scan, hardware and network.
+
+        What the window opens with and what the rescan button asks for.
+        Ignored when a scan is already running.
+        """
+        self._begin(quick=False)
+
+    def refresh(self) -> None:
+        """Re-measure after an action, without the two PowerShell calls.
+
+        Falls back to a full scan when nothing has been scanned yet: there
+        would be no inventory to reuse and no network reading to carry.
+        """
+        self._begin(quick=self._last_network is not None)
+
+    def _begin(self, *, quick: bool) -> None:
         if self.busy:
             return
 
         thread = QThread()
-        worker = ScanWorker()
+        worker = ScanWorker(
+            scanner=self._scanner,
+            quick=quick,
+            previous_network=self._last_network,
+        )
         worker.moveToThread(thread)
 
         thread.started.connect(worker.run)
@@ -115,6 +191,8 @@ class ScanController(QObject):
 
     def _on_finished(self, result: ScanResult) -> None:
         self._teardown()
+        if result.network is not None:
+            self._last_network = result.network
         self.completed.emit(result)
 
     def _on_failed(self, message: str) -> None:

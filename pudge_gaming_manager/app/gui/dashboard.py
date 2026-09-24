@@ -56,7 +56,11 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
 
         self._result: ScanResult | None = None
         self._controller = ScanController(self)
-        self._optimizer = OptimizeController(parent=self)
+        # The optimizer measures the after-state with the scan
+        # controller's scanner, so both share one cached inventory.
+        self._optimizer = OptimizeController(
+            parent=self, scanner=self._controller.scanner
+        )
         self._profiles = ProfileController(self)
         self._steam = SteamController(self)
         self._cleanup = CleanupController(self)
@@ -415,9 +419,13 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         self._status.setText("")
         self._rescan.setEnabled(True)
         ResultDialog(outcome, self).exec()  # type: ignore[arg-type]
-        # Rescan so the dashboard reflects the machine as it is now rather
-        # than the state that justified the changes.
-        self._controller.start()
+        # The machine changed, so the dashboard must re-measure rather than
+        # keep showing the state that justified the changes. A refresh, not
+        # a scan: the pipeline has just taken the after-state reading for
+        # its own report, and repeating the two PowerShell calls to learn
+        # which CPU is installed and what the ping is would add four
+        # seconds to an operation that has already finished.
+        self._controller.refresh()
 
     def _on_optimize_failed(self, message: str) -> None:
         self._status.setText("")

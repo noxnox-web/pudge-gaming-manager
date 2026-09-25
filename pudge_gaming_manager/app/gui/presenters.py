@@ -285,19 +285,23 @@ def difference_views(result: ComparisonResult) -> tuple[MetricView, ...]:
     A value that could not be read is grey, never a warning: missing data
     is not evidence that the PC differs (rule #64).
 
-    ``fixable`` means PGM ships a tweak for the setting. Only the «Настройки
-    Windows» section is correctable from the comparison dialog; the hint
-    says which rows are.
+    ``fixable`` means PGM ships a tweak for the setting; the rows the
+    comparison dialog's button actually corrects — settings, power scheme,
+    refresh rate — say so.
     """
     rows: list[MetricView] = []
     for diff in result.drifted:
-        if diff.setting in result.settings_fixes:
-            hint = "Исправляется кнопкой «Привести настройки к профилю…»."
-            line = (
-                f"{diff.detail}: ожидалось «{diff.expected}», "
-                f"обнаружено «{diff.actual}»"
-            )
-            rows.append(MetricView(line, "WARNING", hint, ""))
+        if result.fixes.covers(diff.section, diff.setting):
+            hint = "Исправляется кнопкой «Привести к профилю…»."
+            if diff.section == "settings":
+                # detail holds the setting's display name for this section.
+                line = (
+                    f"{diff.detail}: ожидалось «{diff.expected}», "
+                    f"обнаружено «{diff.actual}»"
+                )
+                rows.append(MetricView(line, "WARNING", hint, ""))
+            else:
+                rows.append(MetricView(diff.line(), "WARNING", hint, diff.detail))
             continue
         hint = (
             "У PGM есть твик для этой настройки; восстановление из "

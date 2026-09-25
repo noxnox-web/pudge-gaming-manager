@@ -23,6 +23,9 @@ from ..optimization.engine import Plan, PlannedChange, RunReport, TweakEngine
 from ..optimization.tweak import Tweak, TweakContext
 from ..optimization.tweaks.choice import tweak_for
 from ..optimization.tweaks.devices import device_tweaks
+from ..optimization.tweaks.display import SetRefreshRateTweak
+from ..optimization.tweaks.power import SetPowerPlanTweak
+from ..profiles.fixes import ProfileFixes
 from .catalog import SETTINGS_BY_ID
 from .state import SettingState, read_all
 
@@ -73,6 +76,30 @@ class SettingsService:
             for spec_id, option in choices.items()
         ]
         tweaks.extend(t for t in self._devices() if t.id in device_ids)
+        return self._plan(tweaks)
+
+    def preview_profile_fixes(self, fixes: ProfileFixes) -> Plan:
+        """Plan what a Golden Profile comparison found correctable.
+
+        The same tweaks OPTIMIZE PC uses, aimed at the profile's values: the
+        power tweak still refuses a scheme absent here or a dual-CCD X3D,
+        the display tweak still tests the mode before switching.
+        """
+        tweaks: list[Tweak] = [
+            tweak_for(SETTINGS_BY_ID[spec_id], option)
+            for spec_id, option in fixes.settings.items()
+        ]
+        if fixes.power_scheme is not None:
+            guid, name = fixes.power_scheme
+            tweaks.append(
+                SetPowerPlanTweak(guid, name, cpu_model=fixes.cpu_model)
+            )
+        tweaks.extend(
+            SetRefreshRateTweak(device, friendly) for device, friendly in fixes.displays
+        )
+        return self._plan(tweaks)
+
+    def _plan(self, tweaks: list[Tweak]) -> Plan:
         engine = self._engine()
         engine.register(tweaks)
         return engine.plan(tweaks)

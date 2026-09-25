@@ -34,6 +34,7 @@ from .schema import (
     WindowsSettingsPolicy,
 )
 from . import settings_drift
+from .fixes import ProfileFixes, collect
 
 _log = get_logger(__name__)
 
@@ -74,8 +75,8 @@ class ComparisonResult:
     profile_name: str
     differences: tuple[Difference, ...]
     checked: int
-    settings_fixes: dict[str, str] = field(default_factory=dict)
-    """Setting id -> profile option, for drift the settings service can fix."""
+    fixes: ProfileFixes = field(default_factory=ProfileFixes)
+    """The drift PGM can correct, through the usual plan and confirmation."""
 
     @property
     def drifted(self) -> tuple[Difference, ...]:
@@ -292,7 +293,9 @@ def compare_with_machine(
         profile_name=base.profile_name,
         differences=base.differences + tuple(extra),
         checked=base.checked + checked,
-        settings_fixes=fixes,
+        fixes=collect(
+            profile, snapshot, active_power_guid=active_guid, settings=fixes
+        ),
     )
 
 

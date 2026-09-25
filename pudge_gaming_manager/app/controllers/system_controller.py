@@ -92,6 +92,12 @@ class SystemController(QObject):
             self.settings_planned.emit,
         )
 
+    def plan_profile_fixes(self, fixes: object) -> None:
+        self._runner.start(
+            lambda: self._settings().preview_profile_fixes(fixes),
+            self.settings_planned.emit,
+        )
+
     def apply_settings(self, plan: object) -> None:
         self._applying = True
         self._runner.start(lambda: self._settings().apply(plan), self._on_applied)

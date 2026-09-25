@@ -171,11 +171,11 @@ class SystemActions:
         ).exec()
 
     def _on_fix_profile_settings(self, fixes) -> None:
-        """Plan the profile's settings; the usual confirmation follows."""
+        """Plan the profile's correctable drift; the usual confirmation follows."""
         if self._system.busy:  # type: ignore[attr-defined]
             return
         self._status_text("Планирование изменений по профилю…")
-        self._system.plan_settings(dict(fixes), set())  # type: ignore[attr-defined]
+        self._system.plan_profile_fixes(fixes)  # type: ignore[attr-defined]
 
     # -- load recording ------------------------------------------------------
 

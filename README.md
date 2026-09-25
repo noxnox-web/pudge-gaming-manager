@@ -161,13 +161,13 @@ missing asset fails the build instead of shipping a blank window icon.
 | `OptimizationPipeline` | Scan findings -> tweaks -> preview -> apply -> rescan, with a before/after report |
 | `RegistryManager` / `ServiceManager` | Allowlist matched per path segment and per hive; `Services` and `Run` keys deliberately excluded. Type-preserving backups, protected-service list. Not yet used by any tweak |
 | Network diagnostics | Physical uplink (cable/Wi-Fi, negotiated speed, duplex) kept apart from the path Windows actually routes through, so a VPN is reported as a VPN and never as the network card. Router and internet latency, loss and jitter via `IcmpSendEcho` — no admin rights, no parsing of translated `ping.exe` output. Runs beside the hardware scan |
-| Golden Profile | Capture this PC, compare another against it, load/save as JSON. Loading is a trust boundary: size-limited, unknown fields rejected. Capture also records the installed Steam games as the club-reset keep-list and the «Настройки Windows» values (catalogue ids and option keys only — no paths, no raw values). Drift in that section can be corrected from the comparison window, through the normal plan and confirmation |
+| Golden Profile | Capture this PC, compare another against it, load/save as JSON. Loading is a trust boundary: size-limited, unknown fields rejected. Capture also records the installed Steam games as the club-reset keep-list and the «Настройки Windows» values (catalogue ids and option keys only — no paths, no raw values). Drift in that section, in the power scheme and in display refresh rate can be corrected from the comparison window («Привести к профилю…»), through the normal plan, confirmation, backup and verification; hardware drift is reported only |
 | Steam club reset | As SteamWiper: removes every game except a built-in keep-list of popular titles (edit `games/steam/default_keep.py`; no profile or config file), with a preview whose checkboxes let the operator rescue any game before deletion; clears `downloading`, `temp`, `shadercache`, `workshop` (whole — including kept games' mods/maps) and `sourcemods` in every library, plus `appcache`, `logs`, `dumps`, `userdata`; **signs every account out** — empties `config` (keeping `config.vdf` and `libraryfolders.vdf`) and deletes each Windows user's saved tokens (`local.vdf`) and Steam web cookies (`htmlcache`). Preview-first with sizes and the number of remembered accounts; everything deleted by handle (junction-swap safe); Steam stopped first |
 | Gaming Score | Transparent, weights configurable, unavailable inputs excluded and renormalised |
 | Issue detection | Findings carry severity, remedy and threshold provenance |
 | Dashboard GUI | PySide6 dark theme; scan, optimize, profile, cleanup and Steam-reset work run on worker threads; score explainer; **ОЧИСТКА ДИСКА / ОЧИСТКА СТИМА / Save as profile… / Compare with profile…**. A write in progress (apply, wipe or cleanup) blocks the window from closing |
 
-**746 tests passing**, plus one opt-in live test that changes and restores
+**751 tests passing**, plus one opt-in live test that changes and restores
 the active power plan (`PGM_LIVE_SYSTEM_TESTS=1`).
 
 ### Running it
@@ -179,8 +179,7 @@ the active power plan (`PGM_LIVE_SYSTEM_TESTS=1`).
 ### Not yet built
 
 Process analyzer · DNS diagnostics · Windows repair (SFC/DISM) ·
-Self-healing · Restoring the hardware/power/display sections of a Golden
-Profile · Per-game tuning profiles · Session mode · FPS / frame-time capture ·
+Self-healing · Per-game tuning profiles · Session mode · FPS / frame-time capture ·
 Maintenance agent · Installer
 
 **`OPTIMIZE PC`** covers the display's refresh rate, disk cleanup and the

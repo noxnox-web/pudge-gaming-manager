@@ -372,3 +372,72 @@ def test_non_utf8_file_is_refused_cleanly(tmp_path: pathlib.Path) -> None:
     with pytest.raises(ProfileSchemaError) as excinfo:
         storage.load(path)
     assert "not UTF-8" in excinfo.value.reason
+
+
+# -- correcting drift ------------------------------------------------------
+
+
+def _slow_monitor() -> MonitorInfo:
+    return MonitorInfo(
+        device_name=r"\.\DISPLAY1",
+        friendly_name="Main",
+        is_primary=True,
+        current_mode=DisplayMode(1920, 1080, 144),
+        max_refresh_at_current_resolution=Reading(240, unit=" Hz"),
+    )
+
+
+def test_power_and_display_drift_become_fixes() -> None:
+    from pudge_gaming_manager.core.profiles.fixes import collect
+
+    profile = GoldenProfile(
+        power=PowerPolicy(scheme_guid=HIGH_PERF, scheme_name="High"),
+        display=DisplayPolicy(require_maximum_refresh_rate=True),
+    )
+    snapshot = _snapshot(monitors=(_slow_monitor(),))
+
+    fixes = collect(profile, snapshot, active_power_guid=BALANCED, settings={"transparency": "off"})
+
+    assert fixes.power_scheme == (HIGH_PERF, "High")
+    assert fixes.displays == ((r"\.\DISPLAY1", "Main"),)
+    assert fixes.count == 3 and fixes.cpu_model == "Test CPU"
+    assert fixes.covers("power", "scheme_guid")
+    assert fixes.covers("display", "refresh_hz[Main]")
+    assert not fixes.covers("hardware", "min_ram_gb")
+
+
+def test_nothing_is_fixed_that_did_not_drift_or_could_not_be_read() -> None:
+    from pudge_gaming_manager.core.profiles.fixes import collect
+
+    profile = GoldenProfile(power=PowerPolicy(scheme_guid=HIGH_PERF))
+
+    assert collect(profile, _snapshot(), active_power_guid=HIGH_PERF, settings={}).count == 0
+    # Unreadable active scheme: unknown, so not something to "fix".
+    assert collect(profile, _snapshot(), active_power_guid=None, settings={}).count == 0
+
+
+def test_the_service_plans_the_profile_values(tmp_path, monkeypatch) -> None:
+    from pudge_gaming_manager.core.profiles.fixes import ProfileFixes
+    from pudge_gaming_manager.core.settings.service import SettingsService
+    from pudge_gaming_manager.database.connection import Database
+
+    service = SettingsService(Database(tmp_path / "f.db"), states=lambda: [], devices=lambda: [])
+    planned: list = []
+    monkeypatch.setattr(service, "_plan", lambda tweaks: planned.extend(tweaks))
+    fixes = ProfileFixes(
+        settings={"transparency": "off"},
+        power_scheme=(HIGH_PERF, "High"),
+        displays=((r"\.\DISPLAY1", "Main"),),
+        cpu_model="AMD Ryzen 9 7950X3D 16-Core Processor",
+    )
+
+    service.preview_profile_fixes(fixes)
+
+    by_id = {t.id: t for t in planned}
+    assert set(by_id) == {
+        "setting.transparency", "power.plan.set_active", "display.refresh_rate.maximise",
+    }
+    power = by_id["power.plan.set_active"]
+    assert power.target_guid == HIGH_PERF
+    # The X3D guard travels with the fix rather than being bypassed by it.
+    assert power.cpu_model.startswith("AMD Ryzen 9 7950X3D")

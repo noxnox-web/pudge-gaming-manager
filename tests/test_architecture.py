@@ -50,18 +50,28 @@ def _imported_layers(path: pathlib.Path) -> set[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     own_layer = _layer_of(path)
     found: set[str] = set()
+    # The package this module lives in, as path segments below the root.
+    package = list(path.relative_to(PACKAGE_ROOT).parts[:-1])
 
     for node in ast.walk(tree):
         module: str | None = None
         if isinstance(node, ast.ImportFrom):
-            if node.level:  # relative import
-                # level 1 = same package; level 2+ can reach a sibling layer
-                if node.level >= 2 and node.module:
-                    module = node.module
-                else:
+            if node.level:  # relative import: resolve it against the package
+                # Level 1 is this package, each further level one up. Taking
+                # the first segment of ``node.module`` instead — as this used
+                # to — read ``..profiles`` from core/settings as the top-level
+                # ``profiles`` layer rather than core.profiles.
+                base = package[: len(package) - (node.level - 1)]
+                if node.level - 1 > len(package):
                     continue
-            else:
-                module = node.module
+                parts = base + (node.module.split(".") if node.module else [])
+                if not parts:
+                    continue
+                layer = parts[0]
+                if layer in ALLOWED_DEPENDENCIES:
+                    found.add(layer)
+                continue
+            module = node.module
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name.startswith("pudge_gaming_manager."):
@@ -72,10 +82,6 @@ def _imported_layers(path: pathlib.Path) -> set[str]:
             continue
         if module.startswith("pudge_gaming_manager."):
             found.add(module.split(".")[1])
-        elif node.level and node.level >= 2:
-            candidate = module.split(".")[0]
-            if candidate in ALLOWED_DEPENDENCIES:
-                found.add(candidate)
 
     found.discard(own_layer)
     return found

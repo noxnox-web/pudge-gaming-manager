@@ -27,7 +27,7 @@ class ComparisonDialog(QDialog):
     """Lists how this PC differs from the chosen profile."""
 
     fix_settings_requested = Signal(object)
-    """Emits ``dict[str, str]``: setting id -> the profile's option."""
+    """Emits the comparison's :class:`ProfileFixes`."""
 
     def __init__(self, result: ComparisonResult, parent=None) -> None:
         super().__init__(parent)
@@ -72,10 +72,10 @@ class ComparisonDialog(QDialog):
         layout.addWidget(rows, stretch=1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        if result.settings_fixes:
-            fixes = dict(result.settings_fixes)
+        if result.fixes.count:
+            fixes = result.fixes
             fix = buttons.addButton(
-                f"Привести настройки к профилю… ({len(fixes)})",
+                f"Привести к профилю… ({fixes.count})",
                 QDialogButtonBox.ButtonRole.ActionRole,
             )
             fix.setObjectName("Primary")

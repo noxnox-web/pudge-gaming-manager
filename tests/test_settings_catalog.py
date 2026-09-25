@@ -387,3 +387,34 @@ def test_absent_marker_is_not_a_catalogue_value() -> None:
 
 def test_catalogue_import_does_not_need_the_machine(tmp_path: pathlib.Path) -> None:
     assert SETTINGS and all(isinstance(s, SettingSpec) for s in SETTINGS)
+
+
+def test_every_reversible_tweak_can_be_undone_from_history() -> None:
+    """A tweak that backs up but has no history factory is undoable only
+    inside the run that made it — «Откатить всё» would then report it as
+    unknown. The dota2.com hosts block shipped that way; this pins it."""
+    import importlib
+    import pkgutil
+
+    import pudge_gaming_manager.core.optimization.tweaks as package
+    from pudge_gaming_manager.core.optimization.tweak import BackupScope, Tweak
+    from pudge_gaming_manager.core.optimization.tweaks.choice import RegistryChoiceTweak
+
+    for module in pkgutil.iter_modules(package.__path__):
+        importlib.import_module(f"{package.__name__}.{module.name}")
+
+    def concrete(cls):
+        for sub in cls.__subclasses__():
+            if not sub.__dict__.get("abstract_base"):
+                yield sub
+            yield from concrete(sub)
+
+    missing = [
+        cls.__name__
+        for cls in concrete(Tweak)
+        if cls.__module__.startswith(package.__name__)  # not other tests' fakes
+        and cls.scope is not BackupScope.NONE
+        and not issubclass(cls, RegistryChoiceTweak)  # resolved via the catalogue
+        and cls.id not in history._FACTORIES
+    ]
+    assert missing == []

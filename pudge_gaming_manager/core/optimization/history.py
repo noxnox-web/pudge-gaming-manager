@@ -38,6 +38,7 @@ from .tweaks.devices import (
     DisableUsbPowerSavingTweak,
 )
 from .tweaks.display import SetRefreshRateTweak
+from .tweaks.dota_hosts import BlockDotaWebTweak
 from .tweaks.game_dvr import DisableGameDvrPolicyTweak, DisableGameDvrTweak
 from .tweaks.mouse import DisableMouseAccelerationTweak
 from .tweaks.power import SetPowerPlanTweak
@@ -112,6 +113,7 @@ _FACTORIES: dict[str, Callable[[ChangeRecord], Tweak]] = {
     DisableUsbSelectiveSuspendTweak.id: lambda _r: DisableUsbSelectiveSuspendTweak(),
     DisablePcieAspmTweak.id: lambda _r: DisablePcieAspmTweak(),
     SetRefreshRateTweak.id: lambda r: SetRefreshRateTweak(r.target, r.target),
+    BlockDotaWebTweak.id: lambda _r: BlockDotaWebTweak(),
     DisableUsbPowerSavingTweak.id: lambda _r: DisableUsbPowerSavingTweak(),
     DisableNicPowerSavingTweak.id: lambda _r: DisableNicPowerSavingTweak(),
     DisableEnergyEfficientEthernetTweak.id: lambda _r: DisableEnergyEfficientEthernetTweak(),

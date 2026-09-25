@@ -42,11 +42,13 @@ import pathlib
 import struct
 import time
 import winreg
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 
+from ...utilities.exceptions import PgmError
 from ...utilities.logging_setup import audit_event, get_logger
 from ..registry.manager import Hive, RegistryManager, RegistryView
+from . import publisher as _publisher
 
 _log = get_logger(__name__)
 
@@ -124,6 +126,11 @@ class StartupEntry:
 
     source: StartupSource
     enabled: bool
+    publisher: str = ""
+    """``CompanyName`` of the program it launches; empty when unknown."""
+
+    protected_reason: str = ""
+    """Non-empty for an entry PGM refuses to disable, saying why."""
 
     @property
     def location_label(self) -> str:
@@ -186,6 +193,14 @@ class StartupManager:
             else:
                 found.extend(self._folder_entries(source, approvals))
 
+        found = [
+            replace(
+                e,
+                publisher=_publisher.publisher(e.command),
+                protected_reason=_publisher.protected_reason(e.name, e.command),
+            )
+            for e in found
+        ]
         found.sort(key=lambda e: (not e.enabled, e.name.lower()))
         _log.info("startup scan: %d entries", len(found))
         return found
@@ -272,7 +287,16 @@ class StartupManager:
 
         The result is read back from the registry rather than assumed: a
         write that silently failed must not be reported as a change.
+
+        A protected entry is refused here, not only greyed out in the
+        dialog: the guard belongs where the write happens.
         """
+        if not enabled and entry.protected_reason:
+            raise PgmError(
+                what=f"«{entry.name}» не отключается",
+                reason=entry.protected_reason,
+                remedy="Если это действительно нужно — диспетчер задач Windows.",
+            )
         self._registry.write(
             entry.source.hive,
             entry.source.approval_subkey,
@@ -291,12 +315,7 @@ class StartupManager:
             new_state={"enabled": confirmed},
             result="SUCCESS" if confirmed == enabled else "FAILED",
         )
-        return StartupEntry(
-            name=entry.name,
-            command=entry.command,
-            source=entry.source,
-            enabled=confirmed,
-        )
+        return replace(entry, enabled=confirmed)
 
 
 __all__ = ["StartupEntry", "StartupManager", "StartupSource"]

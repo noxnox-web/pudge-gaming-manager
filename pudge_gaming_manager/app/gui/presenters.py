@@ -285,12 +285,20 @@ def difference_views(result: ComparisonResult) -> tuple[MetricView, ...]:
     A value that could not be read is grey, never a warning: missing data
     is not evidence that the PC differs (rule #64).
 
-    ``fixable`` means PGM ships a tweak for the setting, not that any button
-    here applies it: OPTIMIZE PC acts on scan findings, not on profile
-    drift, and restoring a profile is not built. The hint says exactly that.
+    ``fixable`` means PGM ships a tweak for the setting. Only the «Настройки
+    Windows» section is correctable from the comparison dialog; the hint
+    says which rows are.
     """
     rows: list[MetricView] = []
     for diff in result.drifted:
+        if diff.setting in result.settings_fixes:
+            hint = "Исправляется кнопкой «Привести настройки к профилю…»."
+            line = (
+                f"{diff.detail}: ожидалось «{diff.expected}», "
+                f"обнаружено «{diff.actual}»"
+            )
+            rows.append(MetricView(line, "WARNING", hint, ""))
+            continue
         hint = (
             "У PGM есть твик для этой настройки; восстановление из "
             "профиля пока не реализовано."

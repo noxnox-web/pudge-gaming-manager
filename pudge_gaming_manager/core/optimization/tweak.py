@@ -69,6 +69,12 @@ class BackupScope(str, Enum):
     POWER = "POWER"
     DISPLAY = "DISPLAY"
     FILE = "FILE"
+    DEVICE = "DEVICE"
+    """A device's power-management flag (``MSPower_DeviceEnable``)."""
+
+    NETWORK = "NETWORK"
+    """A network adapter's advanced property."""
+
     NONE = "NONE"
     """The change is inherently irreversible *and* loses nothing, e.g.
     deleting a temporary file that the system regenerates."""

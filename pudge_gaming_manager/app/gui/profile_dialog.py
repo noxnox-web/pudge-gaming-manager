@@ -1,13 +1,14 @@
 """The result of comparing this PC against a Golden Profile.
 
-Read-only by design: drift detection reports and never corrects
-(ARCHITECTURE.md §10). Restoring a profile is a separate, human action that
-is not built yet, and each row says so rather than implying a fix exists.
+Drift detection reports and never corrects by itself (ARCHITECTURE.md
+§10). For the «Настройки Windows» section a separate, explicit button asks
+for the correction; it goes through the same plan and confirmation as any
+other change, and nothing is written from this dialog directly.
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QDialog,
@@ -24,6 +25,9 @@ from . import presenters, theme
 
 class ComparisonDialog(QDialog):
     """Lists how this PC differs from the chosen profile."""
+
+    fix_settings_requested = Signal(object)
+    """Emits ``dict[str, str]``: setting id -> the profile's option."""
 
     def __init__(self, result: ComparisonResult, parent=None) -> None:
         super().__init__(parent)
@@ -68,6 +72,15 @@ class ComparisonDialog(QDialog):
         layout.addWidget(rows, stretch=1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        if result.settings_fixes:
+            fixes = dict(result.settings_fixes)
+            fix = buttons.addButton(
+                f"Привести настройки к профилю… ({len(fixes)})",
+                QDialogButtonBox.ButtonRole.ActionRole,
+            )
+            fix.setObjectName("Primary")
+            fix.setAutoDefault(False)
+            fix.clicked.connect(lambda: (self.fix_settings_requested.emit(fixes), self.accept()))
         close_btn = buttons.button(QDialogButtonBox.StandardButton.Close)
         close_btn.setObjectName("Secondary")
         close_btn.setText("Закрыть")

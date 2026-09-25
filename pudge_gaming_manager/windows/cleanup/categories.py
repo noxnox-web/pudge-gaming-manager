@@ -150,6 +150,28 @@ CATEGORIES: tuple[CleanupCategory, ...] = (
         requires_admin=True,
     ),
     CleanupCategory(
+        id="cache.windows_update_download",
+        name="Кэш загрузок Windows Update",
+        description=(
+            "Скачанные пакеты обновлений старше недели из "
+            "SoftwareDistribution\\Download."
+        ),
+        rationale=(
+            "Windows Update складывает сюда скачанные пакеты и не всегда "
+            "убирает их после установки. Очистка этой папки — штатный шаг "
+            "Microsoft при неполадках обновления: всё, что ещё понадобится, "
+            "служба скачает заново. Берутся только файлы старше недели, а "
+            "занятые установкой пропускаются, поэтому идущее обновление не "
+            "прерывается. Выключено по умолчанию: цена ошибки — повторная "
+            "загрузка обновления, и решать это должен оператор."
+        ),
+        roots=("%SystemRoot%\\SoftwareDistribution\\Download",),
+        min_age_hours=168.0,  # one week
+        risk=CleanupRisk.LOW,
+        requires_admin=True,
+        enabled_by_default=False,
+    ),
+    CleanupCategory(
         id="logs.windows",
         name="Журналы Windows",
         description="Журналы обслуживания и установки.",

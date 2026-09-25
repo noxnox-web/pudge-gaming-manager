@@ -24,10 +24,7 @@ from pudge_gaming_manager.core.optimization.tweaks.game_dvr import (
     DisableGameDvrPolicyTweak,
     DisableGameDvrTweak,
 )
-from pudge_gaming_manager.core.optimization.tweaks.graphics import (
-    HardwareGpuSchedulingTweak,
-    NetworkThrottlingTweak,
-)
+from pudge_gaming_manager.core.optimization.tweaks.choice import tweak_for
 from pudge_gaming_manager.core.optimization.tweaks.mouse import (
     DisableMouseAccelerationTweak,
 )
@@ -36,6 +33,7 @@ from pudge_gaming_manager.core.optimization.tweaks.power_settings import (
     DisableUsbSelectiveSuspendTweak,
 )
 from pudge_gaming_manager.core.optimization.tweaks.registry_value import ABSENT
+from pudge_gaming_manager.core.settings.catalog import SETTINGS, SETTINGS_BY_ID
 from pudge_gaming_manager.windows.input import mouse
 from pudge_gaming_manager.windows.power.settings import (
     PowerSettings,
@@ -153,6 +151,15 @@ class FakeRegistry:
         self.deleted = True
 
 
+def NetworkThrottlingTweak(registry):  # noqa: N802 - reads like the old class
+    """The throttle setting, as the catalogue now offers it."""
+    return tweak_for(SETTINGS_BY_ID["network_throttling"], "off", registry)
+
+
+def HardwareGpuSchedulingTweak(registry):  # noqa: N802
+    return tweak_for(SETTINGS_BY_ID["hags"], "on", registry)
+
+
 def test_an_absent_value_is_a_change_to_be_made() -> None:
     """Absent means Windows is using its default, which is not the target."""
     registry = FakeRegistry(absent=True)
@@ -244,8 +251,6 @@ def test_a_restart_only_setting_says_so_and_does_not_claim_to_be_live() -> None:
 # -- every new tweak keeps the contract -------------------------------------
 
 NEW_TWEAKS = [
-    HardwareGpuSchedulingTweak,
-    NetworkThrottlingTweak,
     DisableGameDvrTweak,
     DisableGameDvrPolicyTweak,
     DisableMouseAccelerationTweak,
@@ -282,13 +287,10 @@ def test_no_tweak_is_critical(cls) -> None:
 
 def test_every_registry_tweak_targets_an_allowlisted_key() -> None:
     """A key outside the allowlist is refused at runtime; catch it here."""
-    for cls in (
-        HardwareGpuSchedulingTweak,
-        NetworkThrottlingTweak,
-        DisableGameDvrTweak,
-        DisableGameDvrPolicyTweak,
-    ):
+    for cls in (DisableGameDvrTweak, DisableGameDvrPolicyTweak):
         assert is_allowed_key(cls.hive, cls.subkey), cls.__name__
+    for spec in SETTINGS:
+        assert is_allowed_key(spec.hive, spec.subkey), spec.id
 
 
 def test_the_allowlist_still_refuses_what_it_always_refused() -> None:

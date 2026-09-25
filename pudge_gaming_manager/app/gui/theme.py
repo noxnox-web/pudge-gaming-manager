@@ -196,6 +196,24 @@ def stylesheet() -> str:
     }}
     QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
 
+    /* The settings dialog puts these inside cards, where the window
+       background would show as a dark box — same reason as QLabel. */
+    QCheckBox {{ background: transparent; spacing: 8px; }}
+    QComboBox {{
+        background-color: {SURFACE_RAISED};
+        border: 1px solid {BORDER};
+        border-radius: 6px;
+        padding: 6px 10px;
+        min-width: 260px;
+    }}
+    QComboBox:hover {{ border-color: {ACCENT}; }}
+    QComboBox:disabled {{ color: {TEXT_FAINT}; }}
+    QComboBox QAbstractItemView {{
+        background-color: {SURFACE_RAISED};
+        border: 1px solid {BORDER};
+        selection-background-color: {ACCENT};
+    }}
+
     QToolTip {{
         background-color: {SURFACE_RAISED};
         color: {TEXT};

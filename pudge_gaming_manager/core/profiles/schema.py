@@ -157,6 +157,35 @@ class GamesPolicy(_Strict):
         return tuple(sorted(set(value)))
 
 
+class WindowsSettingsPolicy(_Strict):
+    """Expected value of each «Настройки Windows» setting.
+
+    ``{"transparency": "off", "game_mode": "on"}`` — a setting id from the
+    catalogue and one of *its* option keys. Nothing else is accepted: no
+    registry path, no raw value. The profile selects among settings and
+    values fixed in code, which is the whole of rule #56 for this section.
+    """
+
+    expected: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("expected")
+    @classmethod
+    def _known_settings(cls, value: dict[str, str]) -> dict[str, str]:
+        # Lazy for the same reason as the cleanup categories above.
+        from ..settings.catalog import SETTINGS_BY_ID
+
+        problems = []
+        for setting_id, option in value.items():
+            spec = SETTINGS_BY_ID.get(setting_id)
+            if spec is None:
+                problems.append(f"неизвестная настройка «{setting_id}»")
+            elif all(o.key != option for o in spec.options):
+                problems.append(f"у «{setting_id}» нет значения «{option}»")
+        if problems:
+            raise ValueError("; ".join(problems))
+        return value
+
+
 class ProfileOrigin(_Strict):
     """Where the profile was captured. Informational."""
 
@@ -182,6 +211,7 @@ class GoldenProfile(_Strict):
     cleanup: CleanupPolicy = Field(default_factory=CleanupPolicy)
     services: ServicePolicy = Field(default_factory=ServicePolicy)
     games: GamesPolicy = Field(default_factory=GamesPolicy)
+    settings: WindowsSettingsPolicy = Field(default_factory=WindowsSettingsPolicy)
 
     @field_validator("schema_version")
     @classmethod

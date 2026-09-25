@@ -14,7 +14,7 @@ is a human action.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -31,7 +31,9 @@ from .schema import (
     HardwareExpectations,
     PowerPolicy,
     ProfileOrigin,
+    WindowsSettingsPolicy,
 )
+from . import settings_drift
 
 _log = get_logger(__name__)
 
@@ -72,6 +74,8 @@ class ComparisonResult:
     profile_name: str
     differences: tuple[Difference, ...]
     checked: int
+    settings_fixes: dict[str, str] = field(default_factory=dict)
+    """Setting id -> profile option, for drift the settings service can fix."""
 
     @property
     def drifted(self) -> tuple[Difference, ...]:
@@ -129,6 +133,7 @@ def capture(
     active_power_scheme: tuple[str, str] | None = None,
     cleanup_categories: tuple[str, ...] = (),
     keep_steam_app_ids: tuple[int, ...] = (),
+    windows_settings: dict[str, str] | None = None,
     tool_version: str = __version__,
 ) -> GoldenProfile:
     """Build a profile from a reference PC.
@@ -182,6 +187,7 @@ def capture(
         display=DisplayPolicy(require_maximum_refresh_rate=True),
         cleanup=CleanupPolicy(enabled_categories=cleanup_categories),
         games=GamesPolicy(keep_steam_app_ids=keep_steam_app_ids),
+        settings=WindowsSettingsPolicy(expected=windows_settings or {}),
     )
 
 
@@ -204,6 +210,7 @@ def capture_from_machine(
         name=name,
         active_power_scheme=(scheme.normalized_guid, scheme.name) if scheme else None,
         keep_steam_app_ids=_installed_steam_app_ids(),
+        windows_settings=settings_drift.capture(),
         tool_version=__version__,
     )
 
@@ -278,7 +285,15 @@ def compare_with_machine(
     active_guid = None
     if profile.power.scheme_guid is not None:
         active_guid = (power or PowerManager()).get_active_guid()
-    return compare(profile, snapshot, active_power_guid=active_guid)
+    base = compare(profile, snapshot, active_power_guid=active_guid)
+    extra: list[Difference] = []
+    checked, fixes = settings_drift.compare(profile.settings, extra)
+    return ComparisonResult(
+        profile_name=base.profile_name,
+        differences=base.differences + tuple(extra),
+        checked=base.checked + checked,
+        settings_fixes=fixes,
+    )
 
 
 def _compare_hardware(

@@ -81,6 +81,7 @@ class ProfileAndGamesActions:
         self._startup.clicked.connect(self._on_startup)  # type: ignore[attr-defined]
         tools.addWidget(self._startup)  # type: ignore[attr-defined]
         layout.addLayout(tools)
+        self._build_system_actions(layout)  # type: ignore[attr-defined]
 
         # Disk cleanup stands on its own rather than hiding inside
         # OPTIMIZE: it is the action an operator reaches for by name, and
@@ -139,6 +140,7 @@ class ProfileAndGamesActions:
         self._clean_disk.setEnabled(enabled)  # type: ignore[attr-defined]
         self._disk_usage.setEnabled(enabled)  # type: ignore[attr-defined]
         self._startup.setEnabled(enabled)  # type: ignore[attr-defined]
+        self._set_system_actions(enabled)  # type: ignore[attr-defined]
 
     def _on_save_profile(self) -> None:
         if self._result is None or self._profiles.busy:  # type: ignore[attr-defined]
@@ -176,7 +178,9 @@ class ProfileAndGamesActions:
     def _on_profile_compared(self, result: object) -> None:
         self._status.setText("")  # type: ignore[attr-defined]
         self._set_profile_actions(True)
-        ComparisonDialog(result, self).exec()  # type: ignore[arg-type]
+        dialog = ComparisonDialog(result, self)  # type: ignore[arg-type]
+        dialog.fix_settings_requested.connect(self._on_fix_profile_settings)  # type: ignore[attr-defined]
+        dialog.exec()
 
     def _on_profile_failed(self, message: str) -> None:
         self._status.setText("")  # type: ignore[attr-defined]

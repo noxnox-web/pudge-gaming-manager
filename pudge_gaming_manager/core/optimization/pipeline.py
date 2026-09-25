@@ -20,6 +20,7 @@ is the kind of speculative tweak rule #64 forbids.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Callable
 
 from ...database.connection import Database
 from ...hardware.models import HardwareSnapshot
@@ -28,13 +29,14 @@ from ...windows.cleanup.categories import default_categories
 from ...windows.cleanup.rules import CleanupCategory
 from ..diagnostics.issues import Issue
 from ..scoring.score import GamingScore, compute_score
+from ..settings.catalog import Tier, by_tier
 from .engine import Plan, RunReport, TweakEngine
 from .tweak import Tweak, TweakContext
 from .tweaks.apps import app_tweaks
+from .tweaks.choice import tweak_for
 from .tweaks.cleanup import CleanTemporaryFilesTweak
 from .tweaks.display import tweaks_for_underperforming_displays
 from .tweaks.game_dvr import DisableGameDvrPolicyTweak, DisableGameDvrTweak
-from .tweaks.graphics import HardwareGpuSchedulingTweak, NetworkThrottlingTweak
 from .tweaks.mouse import DisableMouseAccelerationTweak
 from .tweaks.power import SetPowerPlanTweak
 from .tweaks.power_settings import (
@@ -144,8 +146,16 @@ class OptimizationPipeline:
         *,
         allow_risk_above_low: bool = False,
         cleanup_categories: tuple[CleanupCategory, ...] | None = None,
+        restore_point: Callable[[], tuple[bool, str]] | None = None,
     ) -> None:
+        """
+        Args:
+            restore_point: Creates a Windows restore point before a real
+                run. Injected so tests never create one; the application
+                passes :func:`.restore_point.create`.
+        """
         self.database = database
+        self.restore_point = restore_point
         self.allow_risk_above_low = allow_risk_above_low
         self.cleanup_categories = (
             cleanup_categories if cleanup_categories is not None
@@ -189,19 +199,26 @@ class OptimizationPipeline:
         # The active power scheme, then the two settings inside it that
         # the scheme does not necessarily cover. Each self-skips when it is
         # already right or absent on this machine.
-        tweaks.append(SetPowerPlanTweak())
+        tweaks.append(SetPowerPlanTweak(cpu_model=snapshot.cpu.model))
         tweaks.append(DisableUsbSelectiveSuspendTweak())
         tweaks.append(DisablePcieAspmTweak())
 
         # Settings that trade a user-visible behaviour for consistency or
-        # for work the machine stops doing. All MEDIUM except the network
-        # throttle, so they appear in the preview as held back until the
-        # operator asks for that class, and then arrive unticked.
-        tweaks.append(NetworkThrottlingTweak())
-        tweaks.append(HardwareGpuSchedulingTweak())
+        # for work the machine stops doing. MEDIUM, so they appear in the
+        # preview as held back until the operator asks for that class, and
+        # then arrive unticked.
         tweaks.append(DisableMouseAccelerationTweak())
         tweaks.append(DisableGameDvrTweak())
         tweaks.append(DisableGameDvrPolicyTweak())
+
+        # The catalogue's recommended tier: settings every source agrees on,
+        # at the recommended option. HAGS, Game Mode and the MMCSS/scheduler
+        # values are deliberately *not* here — the sources disagree on them,
+        # so they live in the «Настройки Windows» dialog, where the operator
+        # sees the current state and the reasoning and chooses.
+        for spec in by_tier(Tier.RECOMMENDED):
+            if spec.recommended is not None:
+                tweaks.append(tweak_for(spec, spec.recommended))
 
         # Removals. These are the only tweaks that take something away and
         # cannot put it back, so each is marked irreversible in the preview
@@ -267,10 +284,23 @@ class OptimizationPipeline:
                 used to measure the after-state. Injected rather than
                 imported so this module does not depend on the scanner.
         """
+        restore_note = ""
+        if not dry_run and self.restore_point is not None and preview.has_changes:
+            # A second net under PGM's own per-change backups. Its failure
+            # is reported and never blocks the run: those backups are what
+            # rollback actually relies on.
+            try:
+                _created, restore_note = self.restore_point()
+            except Exception as exc:  # noqa: BLE001 - see above
+                _log.exception("restore point failed")
+                restore_note = f"Точка восстановления не создана: {exc}"
+
         engine = self._engine()
         run = engine.apply(preview.plan, dry_run=dry_run)
 
         outcome = OptimizationOutcome(run=run, score_before=preview.score_before)
+        if restore_note:
+            outcome.notes.append(restore_note)
         if dry_run:
             outcome.notes.append("Пробный прогон: ничего не изменено.")
             return outcome

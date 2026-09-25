@@ -13,10 +13,14 @@ import pathlib
 import threading
 
 from ..database.connection import Database
+from ..hardware.models import HardwareSnapshot
 from ..utilities.logging_setup import get_logger
 from ..windows.cleanup.rules import CleanupCategory
+from .audit.report import SystemReport, build_report
+from .optimization import history, restore_point
 from .optimization.pipeline import OptimizationPipeline
 from .optimization.recovery import InterruptedChange, acknowledge, find_interrupted
+from .settings.service import SettingsService
 
 _log = get_logger(__name__)
 
@@ -57,7 +61,35 @@ def create_optimization_pipeline(
         database or default_database(),
         allow_risk_above_low=allow_risk_above_low,
         cleanup_categories=cleanup_categories,
+        restore_point=restore_point.create,
     )
+
+
+def create_settings_service(database: Database | None = None) -> SettingsService:
+    """The «Настройки Windows» service, backed by the local database."""
+    return SettingsService(
+        database or default_database(), restore_point=restore_point.create
+    )
+
+
+def change_history() -> list[history.ChangeRecord]:
+    """Every change PGM recorded on this PC, newest first."""
+    return history.list_changes(default_database())
+
+
+def restore_change(backup_id: str) -> history.RestoreResult:
+    """Undo one recorded change."""
+    return history.restore(default_database(), backup_id)
+
+
+def restore_all_changes() -> list[history.RestoreResult]:
+    """Undo every change still in force, newest first."""
+    return history.restore_all(default_database())
+
+
+def system_audit(snapshot: HardwareSnapshot | None = None) -> SystemReport:
+    """The read-only system audit."""
+    return build_report(snapshot)
 
 
 def interrupted_changes() -> list[InterruptedChange]:
@@ -81,8 +113,13 @@ def reset_for_tests() -> None:
 
 __all__ = [
     "acknowledge_interrupted",
+    "change_history",
     "create_optimization_pipeline",
+    "create_settings_service",
     "default_database",
     "interrupted_changes",
     "reset_for_tests",
+    "restore_all_changes",
+    "restore_change",
+    "system_audit",
 ]

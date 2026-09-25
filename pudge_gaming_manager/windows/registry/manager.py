@@ -105,7 +105,10 @@ ALLOWED_KEYS: tuple[tuple[frozenset[str], str], ...] = (
     (_USER_OR_MACHINE, r"software\microsoft\games"),
     (_USER_OR_MACHINE, r"software\microsoft\directx"),
     (frozenset({"HKLM"}), r"system\currentcontrolset\control\graphicsdrivers"),
-    (frozenset({"HKLM"}), r"system\currentcontrolset\control\priority control"),
+    # The real key has no space. The earlier spelling, "priority control",
+    # matched nothing, so it allowed nothing — harmless, but a write there
+    # would have been refused as outside the list.
+    (frozenset({"HKLM"}), r"system\currentcontrolset\control\prioritycontrol"),
     (frozenset({"HKCU"}), r"control panel\desktop"),
     # Pointer acceleration is set through SystemParametersInfo, not here;
     # this entry exists so the Mouse key can be *read* for diagnostics
@@ -116,6 +119,13 @@ ALLOWED_KEYS: tuple[tuple[frozenset[str], str], ...] = (
     # mistake would reach Defender and Windows Update.
     (frozenset({"HKCU"}), r"system\gameconfigstore"),
     (frozenset({"HKLM"}), r"software\policies\microsoft\windows\gamedvr"),
+    # Game Mode's per-user switch, and the transparency effect. Each is the
+    # one key its Settings page writes, not the tree around it.
+    (frozenset({"HKCU"}), r"software\microsoft\gamebar"),
+    (
+        frozenset({"HKCU"}),
+        r"software\microsoft\windows\currentversion\themes\personalize",
+    ),
 )
 
 

@@ -36,15 +36,17 @@ from ..controllers.cleanup_controller import CleanupController
 from ..controllers.profile_controller import ProfileController
 from ..controllers.scan_controller import ScanController, ScanResult
 from ..controllers.steam_controller import SteamController
+from ..controllers.system_controller import SystemController
 from ..controllers.tools_controller import ToolsController
 from . import presenters, theme, widgets
 from .dashboard_actions import ProfileAndGamesActions
+from .system_actions import SystemActions
 from .preview_dialog import PreviewDialog, ResultDialog
 from .resources import logo_path
 from .widgets import MetricRow
 
 
-class Dashboard(ProfileAndGamesActions, QMainWindow):
+class Dashboard(ProfileAndGamesActions, SystemActions, QMainWindow):
     """Administrator dashboard."""
 
     def __init__(self) -> None:
@@ -65,6 +67,7 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         self._steam = SteamController(self)
         self._cleanup = CleanupController(self)
         self._tools = ToolsController(self)
+        self._system = SystemController(self)
         # Held only while the startup dialog is open, so a toggle's
         # result can be routed back to the row that asked for it.
         self._startup_dialog = None
@@ -97,6 +100,7 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         self._tools.startup_ready.connect(self._on_startup_ready)
         self._tools.startup_toggled.connect(self._on_startup_toggled)
         self._tools.failed.connect(self._on_tools_failed)
+        self._connect_system()
 
         self._controller.start()
         # After the window is up, report any change a previous run left
@@ -403,7 +407,9 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         self._rescan.setEnabled(True)
         self._optimize.setEnabled(True)
 
-        dialog = PreviewDialog(preview, self)  # type: ignore[arg-type]
+        dialog = PreviewDialog(  # type: ignore[arg-type]
+            preview, self, snapshot=self._result.snapshot if self._result else None
+        )
         outcome = dialog.exec()
         if outcome == PreviewDialog.SHOW_MEDIUM:
             # The operator asked to see the changes the risk gate holds
@@ -460,6 +466,8 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
             if self._steam.wiping
             else "Идёт очистка диска."
             if self._cleanup.cleaning
+            else "Применяются или откатываются настройки."
+            if self._system.applying
             else None
         )
         if blocker is not None:
@@ -475,4 +483,5 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         self._steam.shutdown()
         self._cleanup.shutdown()
         self._tools.shutdown()
+        self._system.shutdown()
         super().closeEvent(event)

@@ -157,13 +157,20 @@ class StartupDialog(QDialog):
 
     @staticmethod
     def _row(entry: StartupEntry) -> QListWidgetItem:
-        item = QListWidgetItem(f"{entry.name}    —    {entry.location_label}")
+        publisher = entry.publisher or "издатель неизвестен"
+        text = f"{entry.name}    —    {publisher}\n{entry.location_label}: {entry.command}"
+        if entry.protected_reason:
+            text += f"\nНе отключается: {entry.protected_reason}"
+        item = QListWidgetItem(text)
         item.setData(_ENTRY, entry)
         item.setToolTip(entry.command)
         item.setForeground(
             QColor(theme.TEXT if entry.enabled else theme.TEXT_FAINT)
         )
-        item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+        flags = Qt.ItemFlag.ItemIsEnabled
+        if not entry.protected_reason:
+            flags |= Qt.ItemFlag.ItemIsUserCheckable
+        item.setFlags(flags)
         item.setCheckState(
             Qt.CheckState.Checked if entry.enabled else Qt.CheckState.Unchecked
         )

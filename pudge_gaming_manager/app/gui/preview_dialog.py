@@ -54,7 +54,9 @@ class PreviewDialog(QDialog):
     #: Result code meaning "re-plan, this time including MEDIUM".
     SHOW_MEDIUM = QDialog.DialogCode.Accepted + 1
 
-    def __init__(self, preview: OptimizationPreview, parent=None) -> None:
+    def __init__(
+        self, preview: OptimizationPreview, parent=None, snapshot=None
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Проверка изменений")
         self.setMinimumSize(660, 460)
@@ -93,6 +95,23 @@ class PreviewDialog(QDialog):
         subtitle.setObjectName("Subtitle")
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
+
+        # What the plan was computed for, and what it deliberately leaves
+        # alone: the operator should not have to wonder whether HAGS or
+        # Defender were touched because they are absent from the list.
+        if snapshot is not None:
+            detected = QLabel(f"Обнаружено: {hardware_line(snapshot)}")
+            detected.setObjectName("ScoreNote")
+            detected.setWordWrap(True)
+            layout.addWidget(detected)
+        untouched = QLabel(
+            "Не меняется здесь: HAGS и игровой режим — только вручную в "
+            "«Настройки Windows»; Защитник, Центр обновления, HPET, режим MSI "
+            "и привязка к ядрам — никогда (причины — в «Аудит системы»)."
+        )
+        untouched.setObjectName("ScoreNote")
+        untouched.setWordWrap(True)
+        layout.addWidget(untouched)
 
         self._list = QListWidget()
         self._list.setWordWrap(True)
@@ -208,6 +227,22 @@ class PreviewDialog(QDialog):
             )
             item.setForeground(Qt.GlobalColor.gray)
             self._list.addItem(item)
+
+
+def hardware_line(snapshot) -> str:
+    """One line naming the machine the plan was built for."""
+    parts = []
+    if snapshot.cpu.model:
+        parts.append(snapshot.cpu.model.strip())
+    for gpu in snapshot.gpus:
+        driver = f", драйвер {gpu.driver_version}" if gpu.driver_version else ""
+        parts.append(f"{gpu.model}{driver}")
+    ram = snapshot.ram.total_mb.value
+    if ram:
+        parts.append(f"{ram / 1024:.0f} ГБ ОЗУ")
+    if snapshot.os.caption:
+        parts.append(f"{snapshot.os.caption} (сборка {snapshot.os.build})")
+    return " · ".join(parts) or "нет данных сканирования"
 
 
 class ResultDialog(QDialog):

@@ -52,6 +52,21 @@ _log = get_logger(__name__)
 _FULL_MIN_PROCESSOR_STATE = 100
 
 
+def needs_balanced_scheme(cpu_model: str) -> bool:
+    """True for AMD Ryzen 9 X3D parts with two core dies.
+
+    On these (7900X3D, 7950X3D, 9900X3D, 9950X3D) only one die carries the
+    3D V-Cache, and AMD's driver moves a game onto it by *parking* the other
+    die. Parking is a Balanced-scheme behaviour: under High Performance the
+    cores are never parked, the game spreads across both dies, and it runs
+    on the one without the cache. AMD's own guidance for these chips is the
+    Balanced scheme with Game Mode on, so switching away is a regression.
+    Single-die X3D parts (5800X3D, 7800X3D, 9800X3D) have nothing to park.
+    """
+    model = cpu_model.upper()
+    return "X3D" in model and "RYZEN 9" in model
+
+
 class SetPowerPlanTweak(Tweak):
     """Switch the active Windows power scheme to a target plan."""
 
@@ -84,7 +99,9 @@ class SetPowerPlanTweak(Tweak):
         target_name: str = "Высокая производительность",
         manager: PowerManager | None = None,
         settings: PowerSettings | None = None,
+        cpu_model: str = "",
     ) -> None:
+        self.cpu_model = cpu_model
         self.target_guid = target_guid.lower()
         self.target_name = target_name
         self._manager = manager
@@ -152,6 +169,13 @@ class SetPowerPlanTweak(Tweak):
         )
 
     def validate(self, ctx: TweakContext, state: TweakState) -> Validation:
+        if needs_balanced_scheme(self.cpu_model):
+            return Validation.refuse(
+                f"{self.cpu_model.strip()}: у двухкристальных Ryzen X3D игру "
+                "на кристалл с 3D-кэшем переводит драйвер AMD, паркуя второй "
+                "кристалл, — а это работает только в схеме «Сбалансированная» "
+                "с включённым игровым режимом. Схема не меняется."
+            )
         manager = self._pm(ctx)
         if state.current_absent:
             return Validation.refuse(

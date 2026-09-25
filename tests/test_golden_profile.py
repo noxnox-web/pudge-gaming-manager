@@ -441,3 +441,44 @@ def test_the_service_plans_the_profile_values(tmp_path, monkeypatch) -> None:
     assert power.target_guid == HIGH_PERF
     # The X3D guard travels with the fix rather than being bypassed by it.
     assert power.cpu_model.startswith("AMD Ryzen 9 7950X3D")
+
+
+# -- services --------------------------------------------------------------
+
+
+def _service(name: str, startup: str):
+    from pudge_gaming_manager.windows.services.manager import ServiceInfo, StartupType
+
+    return ServiceInfo(name=name, display_name=name, startup_type=StartupType(startup))
+
+
+def test_service_drift_is_reported_and_delayed_start_is_not_drift() -> None:
+    from pudge_gaming_manager.core.profiles import services_drift
+
+    policy = ServicePolicy(expected={
+        "SysMain": {"startup_type": "Manual"},
+        "Spooler": {"startup_type": "AutomaticDelayedStart"},
+        "Missing": {"startup_type": "Manual"},
+    })
+    out: list = []
+
+    checked = services_drift.compare(
+        policy, out,
+        services=lambda: [_service("SysMain", "Automatic"), _service("spooler", "Automatic")],
+    )
+
+    assert checked == 3
+    by_name = {d.setting: d for d in out}
+    assert by_name["SysMain"].severity is golden.DriftSeverity.DRIFT
+    assert "Spooler" not in by_name  # Get-Service cannot see "delayed"
+    assert by_name["Missing"].severity is golden.DriftSeverity.UNKNOWN
+    assert not by_name["SysMain"].fixable
+
+
+def test_an_empty_services_section_reads_nothing() -> None:
+    from pudge_gaming_manager.core.profiles import services_drift
+
+    def boom():
+        raise AssertionError("must not query services")
+
+    assert services_drift.compare(ServicePolicy(), [], services=boom) == 0

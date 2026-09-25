@@ -33,7 +33,7 @@ from .schema import (
     ProfileOrigin,
     WindowsSettingsPolicy,
 )
-from . import settings_drift
+from . import services_drift, settings_drift
 from .fixes import ProfileFixes, collect
 
 _log = get_logger(__name__)
@@ -279,9 +279,9 @@ def compare_with_machine(
     *,
     power: PowerManager | None = None,
 ) -> ComparisonResult:
-    """Compare this PC, reading the live power plan only if the profile pins one.
+    """Compare this PC, reading live state only for the sections the profile pins.
 
-    Blocks on ``powercfg``; run it off the UI thread.
+    Blocks on ``powercfg`` and ``Get-Service``; run it off the UI thread.
     """
     active_guid = None
     if profile.power.scheme_guid is not None:
@@ -289,6 +289,7 @@ def compare_with_machine(
     base = compare(profile, snapshot, active_power_guid=active_guid)
     extra: list[Difference] = []
     checked, fixes = settings_drift.compare(profile.settings, extra)
+    checked += services_drift.compare(profile.services, extra)
     return ComparisonResult(
         profile_name=base.profile_name,
         differences=base.differences + tuple(extra),

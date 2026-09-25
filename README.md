@@ -167,7 +167,7 @@ missing asset fails the build instead of shipping a blank window icon.
 | Issue detection | Findings carry severity, remedy and threshold provenance |
 | Dashboard GUI | PySide6 dark theme; scan, optimize, profile, cleanup and Steam-reset work run on worker threads; score explainer; **ОЧИСТКА ДИСКА / ОЧИСТКА СТИМА / Save as profile… / Compare with profile…**. A write in progress (apply, wipe or cleanup) blocks the window from closing |
 
-**751 tests passing**, plus one opt-in live test that changes and restores
+**754 tests passing**, plus one opt-in live test that changes and restores
 the active power plan (`PGM_LIVE_SYSTEM_TESTS=1`).
 
 ### Running it
@@ -226,9 +226,13 @@ on or off the way Task Manager does — by writing the `StartupApproved` flag,
 never by deleting the entry. Disabling is reversible, and Task Manager shows
 the same state afterwards.
 
-The profile comparison checks hardware, power plan and display. The schema
-also accepts `cleanup` and `services` sections; those are validated but not
-yet compared.
+The profile comparison checks hardware, power plan, display, «Настройки
+Windows» and service startup types. Services are report-only — there is no
+tweak that changes a startup type, protected services are refused by the
+schema, and automatic versus delayed-automatic compare as equal because
+`Get-Service` on PowerShell 5.1 cannot tell them apart. The `cleanup`
+section is a club policy rather than machine state, so it is validated and
+stored but has nothing to compare.
 
 ---
 

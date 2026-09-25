@@ -1,8 +1,7 @@
 """Tests for the Windows 11 windows.old removal.
 
 No test deletes a real windows.old: the folder path and Windows-11 detection
-are patched, and the takeown/icacls/rmdir steps go through a fake runner that
-performs a plain recursive delete against a throwaway tree.
+are patched, and the handle-based delete runs against a throwaway tree.
 """
 
 from __future__ import annotations
@@ -20,22 +19,6 @@ from pudge_gaming_manager.core.optimization.tweaks.windows_old import (
 from pudge_gaming_manager.windows.cleanup import windows_old
 
 windows_only = pytest.mark.skipif(os.name != "nt", reason="Windows-only behaviour")
-
-
-class _FakeRunner:
-    """Stands in for CommandRunner; the rmdir step really deletes the tree."""
-
-    def __init__(self, do_delete: bool = True) -> None:
-        self.calls: list[list[str]] = []
-        self._do_delete = do_delete
-
-    def try_run(self, args, *, timeout_s=None, **_kw):
-        self.calls.append(list(args))
-        if self._do_delete and args[:3] == ["cmd", "/c", "rmdir"]:
-            import shutil
-
-            shutil.rmtree(args[-1], ignore_errors=True)
-        return None
 
 
 def _fake_old(tmp_path: pathlib.Path, monkeypatch, present: bool = True) -> pathlib.Path:
@@ -76,38 +59,68 @@ def test_offered_on_windows_11_with_the_folder(tmp_path, monkeypatch) -> None:
 # -- removal -----------------------------------------------------------------
 
 
-def test_apply_takes_ownership_then_removes(tmp_path, monkeypatch) -> None:
+def test_apply_removes_the_tree_without_rewriting_permissions(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(windows_old, "is_windows_11", lambda: True)
     old = _fake_old(tmp_path, monkeypatch)
-    runner = _FakeRunner()
     tweak = RemoveWindowsOldTweak()
 
-    result = tweak.apply(TweakContext(runner=runner), tweak.scan(TweakContext()))
-    assert result.outcome is Outcome.SUCCESS
+    result = tweak.apply(TweakContext(), tweak.scan(TweakContext()))
+
+    assert result.outcome is Outcome.SUCCESS, result.detail
+    assert "2.0 КБ" in result.detail or "файлов: 1" in result.detail
     assert not old.exists()
-    # ownership is taken and rights granted before the delete
-    steps = [c[0] for c in runner.calls]
-    assert steps == ["takeown", "icacls", "cmd"]
     assert tweak.verify(TweakContext(), tweak.scan(TweakContext())).confirmed
+
+
+def test_the_size_is_read_by_handle(tmp_path, monkeypatch) -> None:
+    _fake_old(tmp_path, monkeypatch)
+    assert windows_old.folder_size() == 2048
 
 
 def test_dry_run_deletes_nothing(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(windows_old, "is_windows_11", lambda: True)
     old = _fake_old(tmp_path, monkeypatch)
-    runner = _FakeRunner()
     tweak = RemoveWindowsOldTweak()
-    result = tweak.apply(TweakContext(runner=runner, dry_run=True), tweak.scan(TweakContext()))
+    result = tweak.apply(TweakContext(dry_run=True), tweak.scan(TweakContext()))
     assert result.outcome is Outcome.SUCCESS
-    assert old.exists() and runner.calls == []
+    assert old.exists()
 
 
-def test_apply_reports_failure_if_folder_survives(tmp_path, monkeypatch) -> None:
+def test_files_left_behind_are_a_failure_not_a_success(tmp_path, monkeypatch) -> None:
+    from pudge_gaming_manager.utilities.tree_delete import DeleteStats
+
     monkeypatch.setattr(windows_old, "is_windows_11", lambda: True)
     _fake_old(tmp_path, monkeypatch)
-    runner = _FakeRunner(do_delete=False)  # commands run but nothing is removed
+    monkeypatch.setattr(
+        windows_old, "remove",
+        lambda path=None: DeleteStats(bytes=10, files=1, failed=2, errors=["x: занят"]),
+    )
     tweak = RemoveWindowsOldTweak()
-    result = tweak.apply(TweakContext(runner=runner), tweak.scan(TweakContext()))
+    result = tweak.apply(TweakContext(), tweak.scan(TweakContext()))
     assert result.outcome is Outcome.FAILED
+    assert "не удалось: 2" in result.detail
+
+
+@windows_only
+def test_a_junction_inside_windows_old_is_deleted_as_a_link(tmp_path, monkeypatch) -> None:
+    r"""Windows.old holds junctions such as «Users\All Users»; the old
+    takeown /r and icacls /t walked into them and re-permissioned the live
+    system. The target must come through untouched."""
+    old = _fake_old(tmp_path, monkeypatch)
+    live = tmp_path / "ProgramData"
+    live.mkdir()
+    (live / "settings.ini").write_bytes(b"live")
+    (old / "Users").mkdir()
+    subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(old / "Users" / "All Users"), str(live)],
+        check=True, capture_output=True,
+    )
+
+    stats = windows_old.remove()
+
+    assert stats is not None and stats.failed == 0 and stats.links == 1
+    assert not old.exists()
+    assert (live / "settings.ini").read_bytes() == b"live"
 
 
 @windows_only
@@ -123,7 +136,5 @@ def test_a_junction_in_place_of_windows_old_is_refused(tmp_path, monkeypatch) ->
     )
     monkeypatch.setattr(windows_old, "windows_old_path", lambda: old)
     assert windows_old.is_present() is False  # a reparse point is not "present"
-    runner = _FakeRunner()
-    assert windows_old.remove(runner=runner) is False
-    assert runner.calls == []  # never even attempted
+    assert windows_old.remove() is None  # refused, not "nothing to do"
     assert (victim / "keep.dll").exists()

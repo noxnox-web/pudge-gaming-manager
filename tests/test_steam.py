@@ -316,8 +316,12 @@ def test_dry_run_signs_nobody_out(tmp_path, monkeypatch) -> None:
 
 
 @windows_only
-def test_config_child_swapped_for_a_junction_is_refused(tmp_path, monkeypatch) -> None:
-    """A junction planted inside config must not aim the delete elsewhere."""
+def test_config_child_swapped_for_a_junction_is_removed_as_a_link(tmp_path, monkeypatch) -> None:
+    """A junction planted inside config must not aim the delete elsewhere.
+
+    It is deleted as a link — its target untouched — and the sign-out goes
+    ahead: refusing would leave the tokens behind for no safety gain.
+    """
     _make_steam(tmp_path, {730: ("CS2", "cs2", 10)})
     _add_steam_state(tmp_path)
     monkey_find(tmp_path)
@@ -335,9 +339,9 @@ def test_config_child_swapped_for_a_junction_is_refused(tmp_path, monkeypatch) -
         check=True, capture_output=True,
     )
     result = wiper.wipe(plan)
-    assert (victim / "important.dat").exists()
-    assert result.signed_out is False
-    assert result.refused
+    assert (victim / "important.dat").read_bytes() == b"keep me"
+    assert not (tmp_path / "config" / "avatarcache").exists()
+    assert result.signed_out is True
 
 
 @windows_only

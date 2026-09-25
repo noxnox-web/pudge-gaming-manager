@@ -18,7 +18,6 @@ administrator rights, because the folder holds files owned by
 
 from __future__ import annotations
 
-from ....utilities.command_runner import CommandRunner
 from ....utilities.formatting import format_size
 from ....windows.cleanup import windows_old
 from ..tweak import (
@@ -79,15 +78,24 @@ class RemoveWindowsOldTweak(Tweak):
         raise NotImplementedError("windows.old removal is not reversible.")
 
     def apply(self, ctx: TweakContext, state: TweakState) -> ApplyResult:
-        runner = ctx.runner or CommandRunner()
         if ctx.dry_run:
             return ApplyResult(Outcome.SUCCESS, "Пробный прогон: папка не удалена.")
-        if windows_old.remove(runner=runner):
-            return ApplyResult(Outcome.SUCCESS, "Папка windows.old удалена.")
-        return ApplyResult(
-            Outcome.FAILED,
-            "Не удалось полностью удалить windows.old (часть файлов занята).",
-        )
+        stats = windows_old.remove()
+        if stats is None:
+            return ApplyResult(
+                Outcome.FAILED,
+                "Папка windows.old не удалена: вместо неё ссылка, или к ней нет "
+                "доступа даже с правами администратора.",
+            )
+        freed = f"освобождено {format_size(stats.bytes)}, файлов: {stats.files}"
+        if stats.failed:
+            return ApplyResult(
+                Outcome.FAILED,
+                f"windows.old удалена не полностью ({freed}); не удалось: "
+                f"{stats.failed} — заняты другими программами. "
+                + "; ".join(stats.errors[:3]),
+            )
+        return ApplyResult(Outcome.SUCCESS, f"Папка windows.old удалена: {freed}.")
 
     def verify(self, ctx: TweakContext, state: TweakState) -> Verification:
         if windows_old.is_present():

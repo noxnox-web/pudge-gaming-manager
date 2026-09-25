@@ -6,11 +6,29 @@ club PC it is dead weight — often tens of gigabytes — and there is no reason
 to keep the rollback.
 
 It cannot be removed like an ordinary folder: many files are owned by
-``TrustedInstaller`` and deny even administrators, which is why Disk Cleanup
-uses a privileged path. This does the documented equivalent — take ownership,
-grant the Administrators group full control, then remove — through
-``takeown``, ``icacls`` and ``rmdir``, each resolved from System32 by
-``CommandRunner``.
+``TrustedInstaller`` and deny even administrators.
+
+How it is removed, and why not ``takeown``/``icacls``
+-------------------------------------------------------
+This used to run ``takeown /r``, ``icacls /grant /t`` and ``rmdir /s``. Two
+things were wrong with that.
+
+**It reached outside the folder.** ``takeown /r`` and ``icacls /t`` walk
+*into* directory junctions — verified on the development machine — and
+``Windows.old`` contains them (``Documents and Settings``, ``Users\\All
+Users`` and others), which can point at the *live* ``C:\\Users`` and
+``C:\\ProgramData``. The elevated run could re-own and re-permission the
+running system's user profiles.
+
+**It was three passes over every file,** two of them rewriting a security
+descriptor per file: 25 s for 20 000 files, against 1.7 s now.
+
+Now the tree is deleted by handle with backup intent
+(:func:`...utilities.tree_delete.delete_tree`): SeBackupPrivilege and
+SeRestorePrivilege — which every administrator token holds, disabled — are
+enabled for the duration, the documented way to delete regardless of a
+file's ACL. No ownership or permission is changed anywhere, every child is
+opened relative to its parent, and a link is deleted as a link.
 
 Deleting it removes the ability to roll the Windows upgrade back. That is the
 operator's decision, made at the preview; this module only carries it out.
@@ -22,7 +40,7 @@ import os
 import pathlib
 import sys
 
-from ...utilities.command_runner import CommandRunner
+from ...utilities import tree_delete
 from ...utilities.logging_setup import get_logger
 from ...utilities.secure_delete import _is_reparse_point
 
@@ -30,9 +48,6 @@ _log = get_logger(__name__)
 
 #: Windows 11 is build 22000 and up; ``Windows.old`` on 10 is out of scope.
 _WINDOWS_11_BUILD = 22000
-
-#: takeown /r on a large tree is slow; give it room rather than time out.
-_STEP_TIMEOUT_S = 600.0
 
 
 def is_windows_11() -> bool:
@@ -61,54 +76,46 @@ def is_present(path: pathlib.Path | None = None) -> bool:
 
 
 def folder_size(path: pathlib.Path | None = None) -> int | None:
-    """Best-effort size of ``Windows.old``; ``None`` if it cannot be read.
+    """Size of ``Windows.old``; ``None`` if it cannot be read.
 
-    Access-denied files (still owned by TrustedInstaller) are skipped, so the
-    figure is a floor, not an exact total — enough to show the operator the
-    scale of what will be freed.
-    """
-    target = path or windows_old_path()
-    if not target.is_dir():
-        return None
-    total = 0
-    for current, _dirs, files in os.walk(target, followlinks=False):
-        here = pathlib.Path(current)
-        for name in files:
-            try:
-                total += (here / name).stat().st_size
-            except OSError:
-                continue
-    return total
-
-
-def remove(
-    path: pathlib.Path | None = None, runner: CommandRunner | None = None
-) -> bool:
-    """Take ownership of ``Windows.old`` and delete it. Returns success.
-
-    Refuses a reparse point (a junction planted in place of the folder must
-    not redirect an elevated delete). Each step needs administrator rights.
+    Read through the same handle walk as the delete, with backup intent, so
+    TrustedInstaller-owned files are counted rather than skipped, and links
+    are neither followed nor counted. The old ``os.walk`` descended into
+    junctions and could add the live ``ProgramData`` to the figure; it also
+    ``stat``-ed every file, where one enumeration call returns sizes for a
+    whole buffer of them — ten times faster.
     """
     target = path or windows_old_path()
     if not is_present(target):
-        return not target.exists()
+        return None
+    try:
+        return tree_delete.measure_tree(target, backup_intent=True).bytes
+    except OSError as exc:
+        _log.warning("cannot measure %s: %s", target, exc)
+        return None
 
-    run = runner or CommandRunner()
-    text = str(target)
 
-    # Take ownership and grant Administrators full control, or the delete is
-    # denied on TrustedInstaller-owned files.
-    run.try_run(["takeown", "/f", text, "/r", "/d", "Y"], timeout_s=_STEP_TIMEOUT_S)
-    run.try_run(
-        ["icacls", text, "/grant", "*S-1-5-32-544:F", "/t", "/c", "/q"],
-        timeout_s=_STEP_TIMEOUT_S,
+def remove(path: pathlib.Path | None = None) -> tree_delete.DeleteStats | None:
+    """Delete ``Windows.old``. Returns what was done; ``None`` if refused.
+
+    Refuses a reparse point: a junction planted in place of the folder must
+    not redirect an elevated delete. Needs administrator rights, for the
+    backup and restore privileges.
+    """
+    target = path or windows_old_path()
+    if not os.path.lexists(target):
+        return tree_delete.DeleteStats()
+    try:
+        # Refuses a link or a non-directory in place of the folder itself.
+        stats = tree_delete.delete_tree(target, backup_intent=True)
+    except OSError as exc:
+        _log.warning("windows.old removal refused at %s: %s", target, exc)
+        return None
+    _log.info(
+        "windows.old removal at %s: %d files, %d links, %d failed",
+        target, stats.files, stats.links, stats.failed,
     )
-    # rmdir via cmd: one native recursive delete, far faster than per-file.
-    run.try_run(["cmd", "/c", "rmdir", "/s", "/q", text], timeout_s=_STEP_TIMEOUT_S)
-
-    removed = not target.exists()
-    _log.info("windows.old removal at %s: %s", target, "removed" if removed else "failed")
-    return removed
+    return stats
 
 
 __all__ = [

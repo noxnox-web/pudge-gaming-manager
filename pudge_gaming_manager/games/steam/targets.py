@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from ...utilities.formatting import format_size
-from ...utilities.secure_delete import assert_real_directory, delete_file, delete_tree
+from ...utilities.secure_delete import delete_file, delete_tree
 
 
 class ClearMode(str, Enum):
@@ -59,17 +59,10 @@ class CacheTarget:
         if self.mode is ClearMode.TREE:
             return delete_tree(self.path)
 
-        # CONTENTS: verify the folder itself by handle, then clear children.
-        assert_real_directory(self.path)
-        freed = 0
-        for child in list(self.path.iterdir()):
-            if child.name.lower() in self.keep_names:
-                continue
-            # delete_tree / delete_file each re-verify the child by handle,
-            # so a child swapped for a junction is refused, not followed.
-            is_dir = child.is_dir() and not child.is_symlink()
-            freed += delete_tree(child) if is_dir else delete_file(child)
-        return freed
+        # CONTENTS: empty the folder through its own handle, sparing the kept
+        # names. Listing it by path and deleting each child by path would let
+        # the folder be swapped for a junction between the two.
+        return delete_tree(self.path, keep_root=True, spare=tuple(self.keep_names))
 
 
 def dir_size(path: pathlib.Path) -> int | None:

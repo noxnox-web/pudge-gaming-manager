@@ -238,7 +238,10 @@ def test_manual_steps_follow_the_gpu_vendor() -> None:
 
 def test_the_exclusions_cover_what_the_guides_argue_about() -> None:
     names = " ".join(e.name for e in policy.NOT_CHANGED)
-    for topic in ("Защитника", "обновления", "HPET", "ISLC", "affinity", "Realtime", "MSI"):
+    for topic in (
+        "Защитника", "обновления", "HPET", "ISLC", "affinity", "Realtime", "MSI",
+        "video.txt",
+    ):
         assert topic in names, topic
 
 

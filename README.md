@@ -147,7 +147,11 @@ missing asset fails the build instead of shipping a blank window icon.
 | `SetRefreshRateTweak` | Raises a display to its maximum refresh rate at the current resolution |
 | Cleanup engine | Allowlisted cleanup across 20 categories — temp files, shader caches, crash dumps, servicing logs, six browsers' page caches (per-profile, via wildcard roots), five game launchers' caches and logs, and the Downloads folder — plus the Recycle Bin through `SHEmptyRecycleBinW`. Five safety layers, two narrow and individually-tested waivers; counted in the preview before anything is deleted and marked irreversible in the UI |
 | Scan versus refresh | A full scan is two PowerShell calls — the hardware inventory (~2.3 s) and the routing query (~2.9 s, run beside it) — and it is what the window opens with and what the rescan button asks for. After an action the dashboard *refreshes* instead: every live value is read again (processor load, GPU temperature, free space, display mode) while the hardware inventory is reused and the previous network reading is carried forward untouched. 80 ms against 3.5 s, and nothing carried over is shown as freshly measured |
-| Gaming tweaks | Twelve tweaks: display refresh rate, temporary-file cleanup, Recycle Bin, power scheme, USB selective suspend, PCIe link power, network throttling, hardware GPU scheduling, pointer acceleration, Game DVR (per-user and policy), and `Windows.old`. Each names a documented mechanism, self-skips when already correct, and is verified by re-reading the machine rather than by trusting the write |
+| Gaming tweaks | Display refresh rate, temporary-file cleanup, Recycle Bin, power scheme (refused on dual-CCD Ryzen X3D, which needs Balanced for AMD's core parking), USB selective suspend, PCIe link power, pointer acceleration, Game DVR (per-user and policy), `Windows.old`, and the catalogue's recommended tier — windowed-game optimisations (Windows 11), transparency, window animations. Each names a documented mechanism, self-skips when already correct, and is verified by re-reading the machine rather than by trusting the write |
+| «Настройки Windows» | A catalogue (`core/settings/catalog.py`) of registry-backed settings in three tiers. Every row shows the current value, the recommendation — or that there is none and why — where the sources disagree, the risk, when it takes effect, the minimum build and hardware. Nothing is pre-selected. Game Mode and HAGS (with support read from the display kernel, `D3DKMT_WDDM_2_7_CAPS`) are *advanced*; NetworkThrottlingIndex, SystemResponsiveness, MMCSS «Games» Scheduling Category and Win32PrioritySeparation are *experimental* and in no preset. Also here: USB and network-adapter power saving and Energy-Efficient Ethernet, each backing up every device's previous state |
+| System audit | Read-only report: CPU topology (SMT, P/E cores, cache domains), GPU driver, monitors, disks, every catalogue setting, power scheme, pointer acceleration, which USB controller each mouse and keyboard is on, network driver age and advanced properties, MSI mode, HVCI / Secure Boot / TPM / Defender / Windows Update, autostart count, the NVIDIA / AMD control-panel checklist, and a list of what the program deliberately does not do, with reasons (`core/audit/policy.py`) |
+| Change history and undo | Every reversible change, from any run, can be undone later — one at a time or all, newest first — through the tweak's own verified rollback. Undoing an older change beneath a newer one is refused. A Windows restore point is attempted before each real run; it is checked by sequence number, and its failure never blocks the run |
+| Load recording | Samples CPU (total and busiest core), RAM, and on NVIDIA GPU load, temperature, power, clock and throttle reasons while someone plays. It does **not** measure FPS or frame time — that needs ETW present events — and says so instead of estimating |
 | Application removal | Xbox apps, Widgets, consumer Teams, OneDrive and a named list of preinstalled Store apps. Three guards, because this is the one thing the program cannot undo: an explicit catalogue with no pattern matching, `System`-signed packages refused as OS components, and every deliberate omission recorded with its reason — `Microsoft.XboxIdentityProvider` above all, because removing it breaks Game Pass, Minecraft, Forza and Xbox-Live Steam titles on the machine the tool exists to make better at games |
 | Experimental: blocking dota2.com | Adds `dota2.com` and `www.dota2.com` to a PGM-owned block in the hosts file, on one unreplicated report in Valve's tracker ([Dota2-Gameplay #35438](https://github.com/ValveSoftware/Dota2-Gameplay/issues/35438)) that it stops Dota 2's frame rate decaying across a long session. No documented mechanism, no reproduction, no Valve response, and an unruled-out confound — applying it means restarting the client, so every "blocked" measurement began on a fresh process. MEDIUM and unticked; the rationale states the evidence and that the in-client news, event and store panels stop loading. The block is delimited, so other tools' entries are never touched and removal restores the file byte for byte |
 | MEDIUM opt-in | MEDIUM tweaks used to be dropped by the risk gate before the operator saw them — present in the code, absent from the product. The preview now shows how many are held back and offers to re-plan with that class allowed; they then arrive **unticked**, so allowing the class and choosing the change stay two separate acts |
@@ -157,7 +161,7 @@ missing asset fails the build instead of shipping a blank window icon.
 | `OptimizationPipeline` | Scan findings -> tweaks -> preview -> apply -> rescan, with a before/after report |
 | `RegistryManager` / `ServiceManager` | Allowlist matched per path segment and per hive; `Services` and `Run` keys deliberately excluded. Type-preserving backups, protected-service list. Not yet used by any tweak |
 | Network diagnostics | Physical uplink (cable/Wi-Fi, negotiated speed, duplex) kept apart from the path Windows actually routes through, so a VPN is reported as a VPN and never as the network card. Router and internet latency, loss and jitter via `IcmpSendEcho` — no admin rights, no parsing of translated `ping.exe` output. Runs beside the hardware scan |
-| Golden Profile | Capture this PC, compare another against it, load/save as JSON. Loading is a trust boundary: size-limited, unknown fields rejected. Capture also records the installed Steam games as the club-reset keep-list |
+| Golden Profile | Capture this PC, compare another against it, load/save as JSON. Loading is a trust boundary: size-limited, unknown fields rejected. Capture also records the installed Steam games as the club-reset keep-list and the «Настройки Windows» values (catalogue ids and option keys only — no paths, no raw values). Drift in that section can be corrected from the comparison window, through the normal plan and confirmation |
 | Steam club reset | As SteamWiper: removes every game except a built-in keep-list of popular titles (edit `games/steam/default_keep.py`; no profile or config file), with a preview whose checkboxes let the operator rescue any game before deletion; clears `downloading`, `temp`, `shadercache`, `workshop` (whole — including kept games' mods/maps) and `sourcemods` in every library, plus `appcache`, `logs`, `dumps`, `userdata`; **signs every account out** — empties `config` (keeping `config.vdf` and `libraryfolders.vdf`) and deletes each Windows user's saved tokens (`local.vdf`) and Steam web cookies (`htmlcache`). Preview-first with sizes and the number of remembered accounts; everything deleted by handle (junction-swap safe); Steam stopped first |
 | Gaming Score | Transparent, weights configurable, unavailable inputs excluded and renormalised |
 | Issue detection | Findings carry severity, remedy and threshold provenance |
@@ -175,15 +179,18 @@ the active power plan (`PGM_LIVE_SYSTEM_TESTS=1`).
 ### Not yet built
 
 Process analyzer · DNS diagnostics · Windows repair (SFC/DISM) ·
-Self-healing · **Restore Golden Profile** · Per-game tuning profiles ·
-Session mode · Benchmark · Maintenance agent · Installer
+Self-healing · Restoring the hardware/power/display sections of a Golden
+Profile · Per-game tuning profiles · Session mode · FPS / frame-time capture ·
+Maintenance agent · Installer
 
-**`OPTIMIZE PC`** offers seventeen tweaks, covering the display's refresh
-rate, disk cleanup and the Recycle Bin, the power scheme and two settings
-inside it, the multimedia network throttle, hardware GPU scheduling, pointer
-acceleration, Game DVR's background recording, the `Windows.old`
+**`OPTIMIZE PC`** covers the display's refresh rate, disk cleanup and the
+Recycle Bin, the power scheme and two settings inside it, pointer
+acceleration, Game DVR's background recording, the experimental dota2.com
+hosts block, the catalogue's recommended settings, the `Windows.old`
 upgrade-rollback folder, and the removal of Xbox apps, Widgets, consumer
-Teams, OneDrive and a named list of preinstalled Store apps.
+Teams, OneDrive and a named list of preinstalled Store apps. HAGS, Game Mode
+and the scheduler values are not in it: the sources disagree on them, so
+they are chosen by a person in «Настройки Windows».
 
 The removals are the only tweaks that cannot be undone, so each is marked
 НЕОБРАТИМО on its own row in the preview, each is MEDIUM — held behind the
@@ -192,10 +199,7 @@ is removed that is not named in `windows/apps/catalogue.py`, no `System`-
 signed package is removed at all, and every name deliberately left out is
 recorded there with the reason.
 Each one self-skips when it is already correct or inapplicable, and the
-preview says so rather than omitting the row. It does not act on Golden
-Profile drift: comparing against a profile is read-only, rows PGM has a
-tweak for say so, but restoring a profile is not built and the comparison
-window does not pretend otherwise.
+preview says so rather than omitting the row.
 
 **`ОЧИСТКА ДИСКА`** is the cleaner on its own. Unlike the cleanup inside
 `OPTIMIZE PC`, which runs the default categories, this scans *every*

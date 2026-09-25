@@ -32,7 +32,14 @@ from .engine import Plan, RunReport, TweakEngine
 from .tweak import Tweak, TweakContext
 from .tweaks.cleanup import CleanTemporaryFilesTweak
 from .tweaks.display import tweaks_for_underperforming_displays
+from .tweaks.game_dvr import DisableGameDvrPolicyTweak, DisableGameDvrTweak
+from .tweaks.graphics import HardwareGpuSchedulingTweak, NetworkThrottlingTweak
+from .tweaks.mouse import DisableMouseAccelerationTweak
 from .tweaks.power import SetPowerPlanTweak
+from .tweaks.power_settings import (
+    DisablePcieAspmTweak,
+    DisableUsbSelectiveSuspendTweak,
+)
 from .tweaks.recycle_bin import EmptyRecycleBinTweak
 from .tweaks.windows_old import RemoveWindowsOldTweak
 
@@ -45,6 +52,9 @@ class OptimizationPreview:
 
     plan: Plan
     score_before: GamingScore
+    allow_risk_above_low: bool = False
+    """What this plan was built under, so the dialog can say whether the
+    opt-in is still available and ``with_selection`` cannot lose it."""
 
     @property
     def change_count(self) -> int:
@@ -60,7 +70,9 @@ class OptimizationPreview:
     def with_selection(self, selected: set[int]) -> OptimizationPreview:
         """The same preview with only the operator's chosen changes applied."""
         return OptimizationPreview(
-            plan=self.plan.with_selection(selected), score_before=self.score_before
+            plan=self.plan.with_selection(selected),
+            score_before=self.score_before,
+            allow_risk_above_low=self.allow_risk_above_low,
         )
 
 
@@ -173,9 +185,22 @@ class OptimizationPipeline:
         # size and item count before the operator confirms.
         tweaks.append(EmptyRecycleBinTweak())
 
-        # The active power scheme. Self-skips when the target plan is
-        # already active, and refuses when this PC does not have it.
+        # The active power scheme, then the two settings inside it that
+        # the scheme does not necessarily cover. Each self-skips when it is
+        # already right or absent on this machine.
         tweaks.append(SetPowerPlanTweak())
+        tweaks.append(DisableUsbSelectiveSuspendTweak())
+        tweaks.append(DisablePcieAspmTweak())
+
+        # Settings that trade a user-visible behaviour for consistency or
+        # for work the machine stops doing. All MEDIUM except the network
+        # throttle, so they appear in the preview as held back until the
+        # operator asks for that class, and then arrive unticked.
+        tweaks.append(NetworkThrottlingTweak())
+        tweaks.append(HardwareGpuSchedulingTweak())
+        tweaks.append(DisableMouseAccelerationTweak())
+        tweaks.append(DisableGameDvrTweak())
+        tweaks.append(DisableGameDvrPolicyTweak())
 
         # The Windows 11 upgrade leftover, if present. The tweak scans for its
         # own applicability, so it is always offered and self-skips elsewhere.
@@ -191,19 +216,34 @@ class OptimizationPipeline:
         snapshot: HardwareSnapshot,
         issues: tuple[Issue, ...] = (),
         score_before: GamingScore | None = None,
+        *,
+        allow_risk_above_low: bool | None = None,
     ) -> OptimizationPreview:
         """Produce the dry-run preview. Changes nothing.
 
         The preview is mandatory and not skippable: the operator approves
         this exact list before the pipeline touches anything.
+
+        Args:
+            allow_risk_above_low: Overrides the pipeline's default for this
+                plan only. The GUI passes ``True`` after the operator has
+                asked to see MEDIUM changes; they then still arrive
+                unticked, so allowing the class and choosing the change
+                remain two separate acts (rule #38).
         """
-        engine = self._engine()
+        allow = (
+            self.allow_risk_above_low
+            if allow_risk_above_low is None
+            else allow_risk_above_low
+        )
+        engine = self._engine(allow_risk_above_low=allow)
         tweaks = self.build_tweaks(snapshot, issues)
         engine.register(tweaks)
         plan = engine.plan(tweaks)
         return OptimizationPreview(
             plan=plan,
             score_before=score_before or compute_score(snapshot),
+            allow_risk_above_low=allow,
         )
 
     def apply(
@@ -247,9 +287,13 @@ class OptimizationPipeline:
             )
         return outcome
 
-    def _engine(self) -> TweakEngine:
+    def _engine(self, *, allow_risk_above_low: bool | None = None) -> TweakEngine:
         return TweakEngine(
             self.database,
             TweakContext(database=self.database),
-            allow_risk_above_low=self.allow_risk_above_low,
+            allow_risk_above_low=(
+                self.allow_risk_above_low
+                if allow_risk_above_low is None
+                else allow_risk_above_low
+            ),
         )

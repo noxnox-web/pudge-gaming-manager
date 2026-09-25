@@ -22,6 +22,7 @@ from pudge_gaming_manager.core.optimization.tweaks.power import SetPowerPlanTwea
 from pudge_gaming_manager.database.connection import Database
 from pudge_gaming_manager.utilities.command_runner import CommandResult
 from pudge_gaming_manager.utilities.exceptions import PgmError
+from pudge_gaming_manager.windows.power.settings import PowerSettingIndex
 from pudge_gaming_manager.windows.power.manager import BuiltInScheme, PowerManager
 
 windows_only = pytest.mark.skipif(os.name != "nt", reason="Windows-only behaviour")
@@ -183,14 +184,48 @@ def db(tmp_path: pathlib.Path) -> Database:
     return Database(tmp_path / "power.db")
 
 
-def _tweak_with_fake() -> tuple[SetPowerPlanTweak, PowerManager]:
+class FakePowerSettings:
+    """Stands in for the powercfg-backed settings reader.
+
+    The tweak consults the minimum processor state to decide whether the
+    active scheme already achieves what switching would achieve. Tests that
+    want the switch to be needed say the processor is allowed to drop.
+    """
+
+    def __init__(self, min_processor_state: int = 5) -> None:
+        self.min_processor_state = min_processor_state
+
+    def read(self, _subgroup: str, _setting: str, _scheme: str = "") -> object:
+        return PowerSettingIndex(ac=self.min_processor_state, dc=5)
+
+
+def _tweak_with_fake(
+    min_processor_state: int = 5,
+) -> tuple[SetPowerPlanTweak, PowerManager]:
     manager = PowerManager(runner=FakeRunner())  # type: ignore[arg-type]
     tweak = SetPowerPlanTweak(
         target_guid=BuiltInScheme.HIGH_PERFORMANCE.value,
         target_name="High performance",
         manager=manager,
+        settings=FakePowerSettings(min_processor_state),  # type: ignore[arg-type]
     )
     return tweak, manager
+
+
+def test_a_scheme_already_holding_the_processor_at_full_is_left_alone() -> None:
+    """Enabling Ultimate Performance clones the scheme under a fresh GUID.
+
+    So "is the active GUID one of the good ones" cannot answer this, and
+    answering it wrongly meant offering to move a machine from Ultimate
+    Performance *down* to High Performance and calling that an
+    optimisation. The tweak asks the machine instead.
+    """
+    tweak, _ = _tweak_with_fake(min_processor_state=100)
+
+    state = tweak.scan(TweakContext())
+
+    assert not state.needs_change
+    assert "100%" in state.summary
 
 
 def test_scan_detects_a_needed_change() -> None:

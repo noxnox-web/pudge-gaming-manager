@@ -38,8 +38,18 @@ from ..tweak import (
 from ....utilities.exceptions import PgmError
 from ....utilities.logging_setup import get_logger
 from ....windows.power.manager import BuiltInScheme, PowerManager
+from ....windows.power.settings import (
+    SETTING_PROCESSOR_MIN_STATE,
+    SUBGROUP_PROCESSOR,
+    PowerSettings,
+)
 
 _log = get_logger(__name__)
+
+#: The minimum processor state, in percent, that High Performance holds and
+#: that this switch exists to obtain. A scheme already at this value gains
+#: nothing from being replaced.
+_FULL_MIN_PROCESSOR_STATE = 100
 
 
 class SetPowerPlanTweak(Tweak):
@@ -73,10 +83,12 @@ class SetPowerPlanTweak(Tweak):
         target_guid: str = BuiltInScheme.HIGH_PERFORMANCE.value,
         target_name: str = "Высокая производительность",
         manager: PowerManager | None = None,
+        settings: PowerSettings | None = None,
     ) -> None:
         self.target_guid = target_guid.lower()
         self.target_name = target_name
         self._manager = manager
+        self._settings = settings or PowerSettings()
 
     def _pm(self, ctx: TweakContext) -> PowerManager:
         if self._manager is not None:
@@ -85,22 +97,58 @@ class SetPowerPlanTweak(Tweak):
 
     # -- lifecycle ---------------------------------------------------------
 
+    def _satisfied_by(self, current_guid: str | None) -> bool:
+        """True when switching would gain nothing, or would lose something.
+
+        Comparing GUIDs does not work, and finding that out cost a bug:
+        enabling Ultimate Performance does not activate the documented
+        GUID, it creates a *copy* of that scheme with a fresh one. The
+        development machine was running such a copy, and the tweak cheerfully
+        offered to "optimise" it by moving it down to High Performance.
+
+        So the question is asked of the machine instead of a table. What
+        this switch exists to obtain is a processor that is not allowed to
+        drop below full speed; if the active scheme already holds the
+        minimum processor state at 100%, replacing it achieves nothing
+        measurable and risks discarding whatever else the operator set.
+
+        A scheme whose settings cannot be read is not assumed to be
+        satisfactory: unknown means the change is still offered, and the
+        operator decides.
+        """
+        if current_guid is None:
+            return False
+        if current_guid == self.target_guid:
+            return True
+
+        observed = self._settings.read(
+            SUBGROUP_PROCESSOR, SETTING_PROCESSOR_MIN_STATE
+        )
+        return observed is not None and observed.ac >= _FULL_MIN_PROCESSOR_STATE
+
     def scan(self, ctx: TweakContext) -> TweakState:
         manager = self._pm(ctx)
         active = manager.get_active_scheme()
         current_guid = active.normalized_guid if active else None
         current_label = (active.name or current_guid) if active else "неизвестно"
+        satisfied = self._satisfied_by(current_guid)
+
+        if satisfied and current_guid != self.target_guid:
+            summary = (
+                f"Схема питания: {current_label} — процессор уже не "
+                f"опускается ниже 100%, менять не нужно"
+            )
+        elif satisfied:
+            summary = f"Схема питания уже {self.target_name}"
+        else:
+            summary = f"Схема питания: {current_label} -> {self.target_name}"
 
         return TweakState(
             current_value=current_guid,
             desired_value=self.target_guid,
-            needs_change=current_guid != self.target_guid,
+            needs_change=not satisfied,
             current_absent=current_guid is None,
-            summary=(
-                f"Схема питания: {current_label} -> {self.target_name}"
-                if current_guid != self.target_guid
-                else f"Схема питания уже {self.target_name}"
-            ),
+            summary=summary,
         )
 
     def validate(self, ctx: TweakContext, state: TweakState) -> Validation:

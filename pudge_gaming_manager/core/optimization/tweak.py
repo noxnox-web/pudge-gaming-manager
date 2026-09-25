@@ -213,6 +213,12 @@ class Tweak(ABC):
     #: Lifecycle methods a concrete tweak must implement.
     _LIFECYCLE = ("scan", "backup", "apply", "verify", "rollback")
 
+    abstract_base: bool = False
+    """Set on a class that implements the lifecycle but is not itself a
+    usable tweak. Never inherited as True: the check reads it from the
+    class's own ``__dict__``, so a concrete subclass of an abstract base
+    must still declare its id, name and rationale."""
+
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         # Catch an unusable tweak at import time, not when an operator runs it
@@ -227,6 +233,14 @@ class Tweak(ABC):
             for name in Tweak._LIFECYCLE
         )
         if not is_concrete:
+            return
+
+        # A shared base can implement the whole lifecycle and still not be a
+        # tweak: RegistryValueTweak writes "one registry value", and which
+        # value is the subclass's business. Such a base says so explicitly,
+        # which keeps the rule intact — nothing is exempt by accident, only
+        # by declaring itself unusable on its own.
+        if cls.__dict__.get("abstract_base", False):
             return
 
         missing = [

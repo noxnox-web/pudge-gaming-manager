@@ -63,10 +63,18 @@ class OptimizeController(QObject):
         return self._applying
 
     def start_preview(
-        self, snapshot: HardwareSnapshot, issues: tuple[Issue, ...]
+        self,
+        snapshot: HardwareSnapshot,
+        issues: tuple[Issue, ...],
+        *,
+        allow_medium: bool = False,
     ) -> None:
+        """Plan a run. ``allow_medium`` re-plans including MEDIUM changes."""
         if self._runner.start(
-            lambda: self._pipeline.preview(snapshot, issues), self.preview_ready.emit
+            lambda: self._pipeline.preview(
+                snapshot, issues, allow_risk_above_low=allow_medium
+            ),
+            self.preview_ready.emit,
         ):
             self.preview_started.emit()
 

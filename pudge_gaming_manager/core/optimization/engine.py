@@ -47,6 +47,18 @@ class PlannedChange:
     will_apply: bool
     skip_reason: str = ""
 
+    blocked_by_risk: bool = False
+    """Skipped only because its risk class needs explicit approval.
+
+    A structured flag rather than something to be recovered by reading
+    ``skip_reason``: that string is shown to the operator and is therefore
+    free to be reworded or translated, and a decision made by matching
+    display text is a bug waiting for the next translator (this codebase
+    has already had one). The preview uses this to offer the opt-in, and
+    offers it for nothing else — a change refused because it needs
+    administrator rights, or because the setting is absent, is not
+    something a checkbox can fix."""
+
     @property
     def summary(self) -> str:
         return self.state.summary or self.tweak.name
@@ -87,6 +99,11 @@ class Plan:
                 for index, change in enumerate(self.changes)
             ),
         )
+
+    @property
+    def blocked_by_risk(self) -> tuple[PlannedChange, ...]:
+        """Changes the operator could allow by approving their risk class."""
+        return tuple(c for c in self.changes if c.blocked_by_risk)
 
     def by_risk(self) -> dict[RiskLevel, int]:
         counts: dict[RiskLevel, int] = {}
@@ -198,21 +215,29 @@ class TweakEngine:
                 continue
 
             validation = tweak.validate(self.context, state)
-            will_apply, reason = self._gate(tweak, state, validation)
+            will_apply, reason, by_risk = self._gate(tweak, state, validation)
             changes.append(
-                PlannedChange(tweak, state, validation, will_apply, reason)
+                PlannedChange(
+                    tweak, state, validation, will_apply, reason,
+                    blocked_by_risk=by_risk,
+                )
             )
 
         return Plan(run_id=run_id, changes=tuple(changes))
 
     def _gate(
         self, tweak: Tweak, state: TweakState, validation: Validation
-    ) -> tuple[bool, str]:
-        """Decide whether a validated tweak may actually run."""
+    ) -> tuple[bool, str, bool]:
+        """Decide whether a validated tweak may actually run.
+
+        Returns ``(will_apply, reason, blocked_by_risk)``. The last is true
+        only when the sole obstacle is the risk class, which is the one
+        obstacle the operator can lift.
+        """
         if not state.needs_change:
-            return False, ALREADY_DESIRED
+            return False, ALREADY_DESIRED, False
         if not validation.ok:
-            return False, validation.reason or "проверка отклонила изменение"
+            return False, validation.reason or "проверка отклонила изменение", False
         # MEDIUM and above need elevation whatever the tweak itself declares:
         # the risk class, not the tweak author's flag, decides who may run it.
         needs_admin = (
@@ -221,15 +246,21 @@ class TweakEngine:
             or not tweak.risk.auto_applicable
         )
         if needs_admin and not is_admin():
-            return False, "нужны права администратора"
+            return False, "нужны права администратора", False
         if not tweak.risk.auto_applicable and not self.allow_risk_above_low:
             return False, (
                 f"уровень риска {tweak.risk.value} требует отдельного "
                 "подтверждения"
-            )
+            ), True
         if tweak.risk is RiskLevel.CRITICAL:
-            return False, "изменения уровня CRITICAL никогда не применяются автоматически"
-        return True, ""
+            # Never offered, and never openable by a checkbox: CRITICAL is
+            # defined as "could leave the machine unusable".
+            return (
+                False,
+                "изменения уровня CRITICAL никогда не применяются автоматически",
+                False,
+            )
+        return True, "", False
 
     # -- execution ---------------------------------------------------------
 

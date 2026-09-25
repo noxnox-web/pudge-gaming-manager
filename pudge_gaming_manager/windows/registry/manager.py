@@ -107,6 +107,15 @@ ALLOWED_KEYS: tuple[tuple[frozenset[str], str], ...] = (
     (frozenset({"HKLM"}), r"system\currentcontrolset\control\graphicsdrivers"),
     (frozenset({"HKLM"}), r"system\currentcontrolset\control\priority control"),
     (frozenset({"HKCU"}), r"control panel\desktop"),
+    # Pointer acceleration is set through SystemParametersInfo, not here;
+    # this entry exists so the Mouse key can be *read* for diagnostics
+    # without widening anything that writes.
+    (frozenset({"HKCU"}), r"control panel\mouse"),
+    # Game DVR's two switches. Narrow on purpose: the per-user store and
+    # the one policy key, not the whole Policies tree, which is where a
+    # mistake would reach Defender and Windows Update.
+    (frozenset({"HKCU"}), r"system\gameconfigstore"),
+    (frozenset({"HKLM"}), r"software\policies\microsoft\windows\gamedvr"),
 )
 
 

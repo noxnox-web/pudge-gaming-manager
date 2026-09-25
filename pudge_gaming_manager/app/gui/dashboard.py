@@ -404,7 +404,19 @@ class Dashboard(ProfileAndGamesActions, QMainWindow):
         self._optimize.setEnabled(True)
 
         dialog = PreviewDialog(preview, self)  # type: ignore[arg-type]
-        if dialog.exec() != PreviewDialog.DialogCode.Accepted:
+        outcome = dialog.exec()
+        if outcome == PreviewDialog.SHOW_MEDIUM:
+            # The operator asked to see the changes the risk gate holds
+            # back. Re-plan rather than unlock the rows in place: the gate
+            # is part of planning, and a plan that says it was built
+            # without MEDIUM must not quietly start containing it.
+            self._status.setText("Планирование изменений…")
+            self._optimize.setEnabled(False)
+            self._optimizer.start_preview(
+                self._result.snapshot, self._result.issues, allow_medium=True
+            )
+            return
+        if outcome != PreviewDialog.DialogCode.Accepted:
             return
         preview = dialog.selected_preview()  # only what the operator ticked
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from pudge_gaming_manager.core.optimization.pipeline import OptimizationPipeline
+from pudge_gaming_manager.core.optimization.tweak import RiskLevel
 from pudge_gaming_manager.core.optimization.tweaks.cleanup import (
     CleanTemporaryFilesTweak,
 )
@@ -147,17 +148,54 @@ def test_the_recycle_bin_is_offered_by_optimize(
     assert EmptyRecycleBinTweak.id in _ids(tweaks)
 
 
-def test_every_offered_tweak_is_auto_applicable(
+def test_a_medium_tweak_is_offered_but_held_back(
     pipeline: OptimizationPipeline,
 ) -> None:
-    """The pipeline runs with allow_risk_above_low=False.
+    """MEDIUM used to be unreachable; now it is reachable but not automatic.
 
-    A MEDIUM tweak in this list is not "extra safe" — it is silently
-    dropped before the operator ever sees the row, which is a feature that
-    looks present in the code and is absent in the product.
+    Before the preview grew its opt-in, a MEDIUM tweak was dropped by the
+    gate before the operator saw the row — present in the code, absent from
+    the product. It must now appear, marked as held back for its risk, and
+    only that: still not applied, and not confused with a change that was
+    refused for some other reason.
     """
-    for tweak in pipeline.build_tweaks(_snapshot(disks=(_roomy_disk(),))):
-        assert tweak.risk.auto_applicable, tweak.id
+    plan = pipeline.preview(_snapshot(disks=(_roomy_disk(),))).plan
+    medium = [
+        c for c in plan.changes if not c.tweak.risk.auto_applicable
+    ]
+    assert medium, "the catalogue no longer contains a MEDIUM tweak"
+
+    for change in medium:
+        assert not change.will_apply, change.tweak.id
+        # Either it needs nothing doing, or the risk gate is the one thing
+        # holding it. Nothing MEDIUM may be applied without the opt-in.
+        assert change.blocked_by_risk or not change.state.needs_change
+
+
+def test_the_opt_in_makes_medium_applicable(
+    pipeline: OptimizationPipeline,
+) -> None:
+    held = pipeline.preview(_snapshot(disks=(_roomy_disk(),)))
+    if not held.plan.blocked_by_risk:
+        pytest.skip("nothing MEDIUM needs changing on this machine")
+
+    opened = pipeline.preview(
+        _snapshot(disks=(_roomy_disk(),)), allow_risk_above_low=True
+    )
+
+    assert not opened.plan.blocked_by_risk
+    assert opened.change_count > held.change_count
+    assert opened.allow_risk_above_low
+
+
+def test_the_opt_in_never_reaches_critical(
+    pipeline: OptimizationPipeline,
+) -> None:
+    """CRITICAL is defined as "could leave the machine unusable"."""
+    for change in pipeline.preview(
+        _snapshot(disks=(_roomy_disk(),)), allow_risk_above_low=True
+    ).plan.changes:
+        assert change.tweak.risk is not RiskLevel.CRITICAL
 
 
 def test_an_empty_recycle_bin_reports_no_change_rather_than_vanishing(

@@ -147,6 +147,8 @@ missing asset fails the build instead of shipping a blank window icon.
 | `SetRefreshRateTweak` | Raises a display to its maximum refresh rate at the current resolution |
 | Cleanup engine | Allowlisted cleanup across 20 categories — temp files, shader caches, crash dumps, servicing logs, six browsers' page caches (per-profile, via wildcard roots), five game launchers' caches and logs, and the Downloads folder — plus the Recycle Bin through `SHEmptyRecycleBinW`. Five safety layers, two narrow and individually-tested waivers; counted in the preview before anything is deleted and marked irreversible in the UI |
 | Scan versus refresh | A full scan is two PowerShell calls — the hardware inventory (~2.3 s) and the routing query (~2.9 s, run beside it) — and it is what the window opens with and what the rescan button asks for. After an action the dashboard *refreshes* instead: every live value is read again (processor load, GPU temperature, free space, display mode) while the hardware inventory is reused and the previous network reading is carried forward untouched. 80 ms against 3.5 s, and nothing carried over is shown as freshly measured |
+| Gaming tweaks | Twelve tweaks: display refresh rate, temporary-file cleanup, Recycle Bin, power scheme, USB selective suspend, PCIe link power, network throttling, hardware GPU scheduling, pointer acceleration, Game DVR (per-user and policy), and `Windows.old`. Each names a documented mechanism, self-skips when already correct, and is verified by re-reading the machine rather than by trusting the write |
+| MEDIUM opt-in | MEDIUM tweaks used to be dropped by the risk gate before the operator saw them — present in the code, absent from the product. The preview now shows how many are held back and offers to re-plan with that class allowed; they then arrive **unticked**, so allowing the class and choosing the change stay two separate acts |
 | Cleanup performance | A full pass over 20 000 files went from 43 s to under 5 s. The delete-time gate resolves each parent directory once instead of each file, categories are scanned in parallel, deletions are overlapped across eight threads, and `verify` reads free space instead of walking the tree a second time. The largest single win was replacing `pathlib.is_relative_to`, which builds and compares every ancestor Path on this Python — 15 us per call, several calls per file |
 | Disk usage survey | Read-only. Reports the largest folders at a fixed depth under the profile, ProgramData, both Program Files and Windows, with a per-root time budget and an explicit "partial" flag. Deletes nothing: it exists to answer what the cleaner's allowlist deliberately says nothing about |
 | Startup manager | Lists `Run`/`RunOnce` entries (HKCU, HKLM, 32-bit view) and both Startup folders with their enabled state, and toggles them through the `StartupApproved` flag Task Manager writes. Nothing is deleted, the change is reversible, and the state is read back from the registry rather than assumed. PGM never writes to a `Run` key — the allowlist still refuses them |
@@ -159,7 +161,7 @@ missing asset fails the build instead of shipping a blank window icon.
 | Issue detection | Findings carry severity, remedy and threshold provenance |
 | Dashboard GUI | PySide6 dark theme; scan, optimize, profile, cleanup and Steam-reset work run on worker threads; score explainer; **ОЧИСТКА ДИСКА / ОЧИСТКА СТИМА / Save as profile… / Compare with profile…**. A write in progress (apply, wipe or cleanup) blocks the window from closing |
 
-**554 tests passing**, plus one opt-in live test that changes and restores
+**610 tests passing**, plus one opt-in live test that changes and restores
 the active power plan (`PGM_LIVE_SYSTEM_TESTS=1`).
 
 ### Running it
@@ -174,11 +176,11 @@ Process analyzer · DNS diagnostics · Windows repair (SFC/DISM) ·
 Self-healing · **Restore Golden Profile** · Per-game tuning profiles ·
 Session mode · Benchmark · Maintenance agent · Installer
 
-**`OPTIMIZE PC`** offers five things: raising a display to its maximum
-refresh rate at the current resolution, clearing the default cleanup
-categories, emptying the Recycle Bin, switching the active power scheme to
-High Performance, and (on Windows 11) removing the `Windows.old`
-upgrade-rollback folder when present.
+**`OPTIMIZE PC`** offers twelve tweaks, covering the display's refresh rate,
+disk cleanup and the Recycle Bin, the power scheme and two settings inside
+it, the multimedia network throttle, hardware GPU scheduling, pointer
+acceleration, Game DVR's background recording, and the `Windows.old`
+upgrade-rollback folder.
 Each one self-skips when it is already correct or inapplicable, and the
 preview says so rather than omitting the row. It does not act on Golden
 Profile drift: comparing against a profile is read-only, rows PGM has a
@@ -263,6 +265,14 @@ as disconnected.
 display API; would require vendor libraries.
 
 ### Unverified on the target platform
+
+The gaming tweaks were exercised on one machine: an Intel desktop with an
+NVIDIA card, a single monitor, Windows 10, and Ultimate Performance active.
+USB selective suspend was applied, verified and rolled back for real on it;
+hardware GPU scheduling, the network throttle, pointer acceleration and Game
+DVR's per-user switch were already at their target there, so their scan and
+rollback paths are covered by tests rather than by observation. AMD
+hardware, laptops and multi-monitor setups are untested.
 
 Launcher and browser cache categories are written from vendor layout rather
 than from observation on every product. On the development machine the Epic,

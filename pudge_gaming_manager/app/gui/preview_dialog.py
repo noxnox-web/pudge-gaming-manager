@@ -39,7 +39,20 @@ _RISK_COLOURS = {
 
 
 class PreviewDialog(QDialog):
-    """Shows planned changes and asks for confirmation."""
+    """Shows planned changes and asks for confirmation.
+
+    MEDIUM and above are not planned by default, so they arrive here as
+    skipped rows. When any of them was skipped *only* for its risk class,
+    a second button offers to re-plan with that class allowed. Closing with
+    :data:`SHOW_MEDIUM` is the dashboard's cue to do so.
+
+    Allowing the class is not the same as choosing the change. After the
+    re-plan those rows are applicable but **unticked**, so approving one
+    still takes a deliberate click (rule #38).
+    """
+
+    #: Result code meaning "re-plan, this time including MEDIUM".
+    SHOW_MEDIUM = QDialog.DialogCode.Accepted + 1
 
     def __init__(self, preview: OptimizationPreview, parent=None) -> None:
         super().__init__(parent)
@@ -53,11 +66,13 @@ class PreviewDialog(QDialog):
         layout.setSpacing(14)
 
         heading = QLabel(
-            f"Запланировано изменений: {preview.change_count} — снимите галочку, чтобы пропустить"
+            f"Запланировано изменений: {preview.change_count} — снимите "
+            "галочку, чтобы пропустить"
             if preview.has_changes
             else "Изменения не нужны"
         )
         heading.setObjectName("Title")
+        heading.setWordWrap(True)
         layout.addWidget(heading)
 
         irreversible = [
@@ -102,6 +117,19 @@ class PreviewDialog(QDialog):
         )
         self._apply.setObjectName("Primary")
         self._apply.setEnabled(preview.has_changes)
+
+        # Offered only when something is waiting behind the risk gate, and
+        # only while it is still shut: a plan already built with MEDIUM
+        # allowed has nothing further to unlock.
+        blocked = preview.plan.blocked_by_risk
+        if blocked and not preview.allow_risk_above_low:
+            show_medium = buttons.addButton(
+                f"Показать изменения MEDIUM ({len(blocked)})",
+                QDialogButtonBox.ButtonRole.ActionRole,
+            )
+            show_medium.setObjectName("Secondary")
+            show_medium.setAutoDefault(False)
+            show_medium.clicked.connect(lambda: self.done(self.SHOW_MEDIUM))
         cancel = buttons.addButton(QDialogButtonBox.StandardButton.Cancel)
         cancel.setText("Отмена")
         cancel.setObjectName("Secondary")
@@ -114,6 +142,9 @@ class PreviewDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
         self._list.itemChanged.connect(self._sync_apply)
+        # A plan consisting only of MEDIUM changes opens with nothing
+        # ticked, and "Apply" must not be live until something is.
+        self._apply.setEnabled(bool(self.selected_indices()))
 
     def selected_indices(self) -> set[int]:
         """Indices into ``plan.changes`` the operator left ticked."""
@@ -156,7 +187,14 @@ class PreviewDialog(QDialog):
             item.setFlags(
                 Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable
             )
-            item.setCheckState(Qt.CheckState.Checked)
+            # SAFE and LOW start ticked; anything above starts unticked.
+            # The operator asked to *see* this class, which is not the same
+            # as asking to apply a particular change in it.
+            item.setCheckState(
+                Qt.CheckState.Checked
+                if change.tweak.risk.auto_applicable
+                else Qt.CheckState.Unchecked
+            )
             item.setData(_CHANGE_INDEX, index)
             self._list.addItem(item)
             colour = _RISK_COLOURS.get(risk, theme.TEXT)

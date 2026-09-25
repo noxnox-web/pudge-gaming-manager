@@ -263,15 +263,43 @@ def test_the_tweaks_share_one_inventory() -> None:
 # -- OneDrive ---------------------------------------------------------------
 
 
-def test_onedrive_is_looked_for_in_every_known_location(
+class _FakeRunner:
+    """Records commands; ``on_uninstall`` stands in for the uninstaller."""
+
+    def __init__(self, on_uninstall=lambda: None) -> None:
+        self.calls: list[list[str]] = []
+        self._on_uninstall = on_uninstall
+
+    def run(self, args: list[str], **_kwargs: Any) -> None:
+        self.calls.append(list(args))
+        if "/uninstall" in args:
+            self._on_uninstall()
+
+
+def _fake_onedrive(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
-) -> None:
-    """Its installer moved between builds; assuming one meant finding none."""
-    assert len(onedrive._SETUP_LOCATIONS) >= 3
+) -> tuple[pathlib.Path, pathlib.Path]:
+    """A per-user client plus the Windows copy of the setup, both fake."""
+    local = tmp_path / "Local"
+    client = local / "Microsoft" / "OneDrive" / "OneDrive.exe"
+    client.parent.mkdir(parents=True)
+    client.write_bytes(b"")
+    setup = tmp_path / "Windows" / "SysWOW64" / "OneDriveSetup.exe"
+    setup.parent.mkdir(parents=True)
+    setup.write_bytes(b"")
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    monkeypatch.setattr(onedrive, "_CLIENT_LOCATIONS", (str(client),))
+    monkeypatch.setattr(onedrive, "_SYSTEM_SETUP_LOCATIONS", (str(setup),))
+    return client, setup
+
+
+def test_onedrive_is_looked_for_in_every_known_location() -> None:
+    """Per-user and both per-machine layouts."""
+    assert len(onedrive._CLIENT_LOCATIONS) >= 3
 
 
 def test_an_absent_onedrive_is_not_a_change(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(onedrive, "find_setup", lambda: None)
+    monkeypatch.setattr(onedrive, "find_client", lambda: None)
 
     state = RemoveOneDriveTweak().scan(TweakContext())
 
@@ -279,10 +307,70 @@ def test_an_absent_onedrive_is_not_a_change(monkeypatch: pytest.MonkeyPatch) -> 
     assert "не установлен" in state.summary
 
 
+def test_the_setup_windows_keeps_does_not_count_as_installed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    """SysWOW64\\OneDriveSetup.exe survives an uninstall by design.
+
+    Reading it as "installed" made every successful removal report a
+    failure and offered the removal again on every run.
+    """
+    client, setup = _fake_onedrive(monkeypatch, tmp_path)
+    client.unlink()
+
+    state = RemoveOneDriveTweak().scan(TweakContext())
+
+    assert setup.exists()
+    assert not state.needs_change
+
+
+def test_uninstall_succeeds_when_the_client_goes_and_the_setup_stays(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    client, setup = _fake_onedrive(monkeypatch, tmp_path)
+    runner = _FakeRunner(on_uninstall=client.unlink)
+
+    ok, detail = onedrive.uninstall(runner)  # type: ignore[arg-type]
+
+    assert ok, detail
+    assert [str(setup), "/uninstall"] in runner.calls
+    assert setup.exists()
+    assert RemoveOneDriveTweak().verify(TweakContext(), None).confirmed  # type: ignore[arg-type]
+
+
+def test_uninstall_reports_a_client_that_survived(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    _fake_onedrive(monkeypatch, tmp_path)
+
+    ok, detail = onedrive.uninstall(_FakeRunner())  # type: ignore[arg-type]
+
+    assert not ok
+    assert "всё ещё на месте" in detail
+
+
+def test_a_machine_wide_install_is_removed_for_all_users(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    _client, setup = _fake_onedrive(monkeypatch, tmp_path)
+    machine = tmp_path / "Program Files" / "Microsoft OneDrive" / "OneDrive.exe"
+    machine.parent.mkdir(parents=True)
+    machine.write_bytes(b"")
+    monkeypatch.setattr(onedrive, "_CLIENT_LOCATIONS", (str(machine),))
+    runner = _FakeRunner(on_uninstall=machine.unlink)
+
+    state = RemoveOneDriveTweak().scan(TweakContext())
+    ok, _detail = onedrive.uninstall(runner)  # type: ignore[arg-type]
+
+    assert RemoveOneDriveTweak().validate(TweakContext(), state).requires_admin
+    assert ok
+    assert [str(setup), "/uninstall", "/allusers"] in runner.calls
+
+
 def test_uninstalling_an_absent_onedrive_succeeds_quietly(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(onedrive, "find_setup", lambda: None)
+    monkeypatch.setattr(onedrive, "find_client", lambda: None)
 
     ok, detail = onedrive.uninstall()
 

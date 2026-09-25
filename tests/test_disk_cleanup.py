@@ -14,7 +14,6 @@ import time
 import pytest
 
 from pudge_gaming_manager.core.cleanup import RECYCLE_BIN_ID, DiskCleaner
-from pudge_gaming_manager.core.cleanup.service import DiskCleanupPlan
 from pudge_gaming_manager.windows.cleanup import recycle_bin
 from pudge_gaming_manager.windows.cleanup.categories import CATEGORIES
 from pudge_gaming_manager.windows.cleanup.engine import CleanupEngine

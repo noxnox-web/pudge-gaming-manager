@@ -26,6 +26,8 @@ are never applied because nobody unticked them.
 
 from __future__ import annotations
 
+import pathlib
+
 from ....utilities.command_runner import CommandRunner
 from ....utilities.logging_setup import get_logger
 from ....utilities.powershell_runner import PowerShellRunner
@@ -264,20 +266,27 @@ class RemoveOneDriveTweak(Tweak):
         self._runner = runner or CommandRunner()
 
     def scan(self, ctx: TweakContext) -> TweakState:
-        setup = onedrive.find_setup()
+        # The client, not the setup: Windows keeps OneDriveSetup.exe after
+        # an uninstall, so its presence says nothing about OneDrive.
+        client = onedrive.find_client()
         return TweakState(
-            current_value=str(setup) if setup else "",
+            current_value=str(client) if client else "",
             desired_value="",
-            needs_change=setup is not None,
+            needs_change=client is not None,
             summary=(
                 "OneDrive: удалить клиент синхронизации"
-                if setup
+                if client
                 else "OneDrive не установлен"
             ),
         )
 
     def validate(self, ctx: TweakContext, state: TweakState) -> Validation:
-        return Validation.allow()
+        # A Program Files install is removed for all users, which needs
+        # elevation; a per-user one does not.
+        machine_wide = bool(state.current_value) and onedrive.is_machine_wide(
+            pathlib.Path(state.current_value)
+        )
+        return Validation.allow(requires_admin=machine_wide)
 
     def backup(self, ctx: TweakContext, state: TweakState) -> BackupRecord:
         raise NotImplementedError("Удаление OneDrive необратимо и не бэкапится.")
@@ -291,7 +300,7 @@ class RemoveOneDriveTweak(Tweak):
     def verify(self, ctx: TweakContext, state: TweakState) -> Verification:
         if onedrive.is_installed():
             return Verification.deny(
-                "installed", "Деинсталлятор OneDrive всё ещё на месте."
+                "installed", "Клиент OneDrive всё ещё на месте."
             )
         return Verification.confirm("", "OneDrive больше не установлен.")
 

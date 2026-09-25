@@ -5,6 +5,8 @@ __pycache__/
 build/
 dist/
 *.spec
+# The release build's configuration is part of the source.
+!PudgeCleaner.spec
 *.db
 *.db-wal
 *.db-shm

@@ -105,24 +105,26 @@ machine.
 
 ```bash
 .venv/Scripts/python.exe -m pip install pyinstaller
-.venv/Scripts/python.exe -m PyInstaller --noconfirm --clean \
-    --name PudgeCleaner --onefile --windowed --uac-admin \
-    --icon pudge_gaming_manager/app/gui/assets/logo.ico \
-    --add-data "pudge_gaming_manager/app/gui/assets;pudge_gaming_manager/app/gui/assets" \
-    run.py
+.venv/Scripts/python.exe -m PyInstaller --noconfirm --clean PudgeCleaner.spec
 ```
 
 The result is `dist/PudgeCleaner.exe`, a single self-contained file.
-`--uac-admin` embeds a manifest requesting elevation, so Windows shows a UAC
-prompt at launch: the executable always runs as administrator, which the
-optimize and Steam-reset actions need. `--icon` sets the file icon Explorer
-and the taskbar show; `--add-data` (Windows separates source from
-destination with `;`) ships `logo.png` at the same relative path it has in
-the source tree, which is where `app/gui/resources.py` looks for it at
-runtime. `run.py` is the entry point; `PGM_SELFTEST=1` makes it construct
-the dashboard off-screen and exit, which is how a build is smoke-tested
-without a prompt -- the selftest asserts the bundled logo loads, so a
-missing asset fails the build instead of shipping a blank window icon.
+`PudgeCleaner.spec` is the build configuration and is kept in the
+repository: it embeds a manifest requesting elevation (`uac_admin`, so the
+executable always runs as administrator, which the optimize and Steam-reset
+actions need), sets the icon, ships `app/gui/assets` at the same relative
+path `app/gui/resources.py` looks in, and — the part a command line would
+lose — excludes the Qt modules and plugins a widgets program never loads
+(QML/Quick, PDF, OpenGL, Network, Qt's OpenSSL, the 20 MB software OpenGL
+fallback) and pywin32's MFC layer. A one-file exe unpacks everything on
+every launch, so that trim took it from 58.5 MB to 37.4 MB.
+
+`run.py` is the entry point. `PGM_SELFTEST=1` constructs the dashboard and
+exits, which is how a build is smoke-tested without a prompt: it asserts the
+bundled logo loads and that WMI works in-process, so a missing asset or a
+bundle without the COM bindings fails instead of shipping. It runs
+off-screen by default; `QT_QPA_PLATFORM=windows` runs it on the real
+platform plugin, the one club PCs use.
 
 ---
 

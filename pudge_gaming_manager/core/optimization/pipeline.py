@@ -36,6 +36,7 @@ from .tweaks.apps import app_tweaks
 from .tweaks.choice import tweak_for
 from .tweaks.cleanup import CleanTemporaryFilesTweak
 from .tweaks.display import tweaks_for_underperforming_displays
+from .tweaks.dota_hosts import BlockDotaWebTweak
 from .tweaks.game_dvr import DisableGameDvrPolicyTweak, DisableGameDvrTweak
 from .tweaks.mouse import DisableMouseAccelerationTweak
 from .tweaks.power import SetPowerPlanTweak
@@ -210,6 +211,11 @@ class OptimizationPipeline:
         tweaks.append(DisableMouseAccelerationTweak())
         tweaks.append(DisableGameDvrTweak())
         tweaks.append(DisableGameDvrPolicyTweak())
+
+        # Experimental, on a single unreplicated report. MEDIUM, so it is
+        # held behind the opt-in and arrives unticked; its rationale states
+        # the evidence and what stops loading in the Dota 2 client.
+        tweaks.append(BlockDotaWebTweak())
 
         # The catalogue's recommended tier: settings every source agrees on,
         # at the recommended option. HAGS, Game Mode and the MMCSS/scheduler

@@ -30,6 +30,7 @@ from ..diagnostics.issues import Issue
 from ..scoring.score import GamingScore, compute_score
 from .engine import Plan, RunReport, TweakEngine
 from .tweak import Tweak, TweakContext
+from .tweaks.apps import app_tweaks
 from .tweaks.cleanup import CleanTemporaryFilesTweak
 from .tweaks.display import tweaks_for_underperforming_displays
 from .tweaks.game_dvr import DisableGameDvrPolicyTweak, DisableGameDvrTweak
@@ -201,6 +202,12 @@ class OptimizationPipeline:
         tweaks.append(DisableMouseAccelerationTweak())
         tweaks.append(DisableGameDvrTweak())
         tweaks.append(DisableGameDvrPolicyTweak())
+
+        # Removals. These are the only tweaks that take something away and
+        # cannot put it back, so each is marked irreversible in the preview
+        # and every one of them is MEDIUM — never applied without the
+        # operator asking for that class first.
+        tweaks.extend(app_tweaks())
 
         # The Windows 11 upgrade leftover, if present. The tweak scans for its
         # own applicability, so it is always offered and self-skips elsewhere.

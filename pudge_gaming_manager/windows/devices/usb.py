@@ -24,9 +24,12 @@ says so instead.
 
 from __future__ import annotations
 
+import ctypes
 import re
+import uuid
 from dataclasses import dataclass, field
 
+from ...utilities import wmi
 from ...utilities.command_runner import CommandRunner
 from ...utilities.exceptions import PgmError
 from ...utilities.logging_setup import get_logger
@@ -180,8 +183,93 @@ def build(rows: list[dict], msi_reader=msi.read) -> UsbInventory:
     )
 
 
+class _DevPropKey(ctypes.Structure):
+    _fields_ = [("fmtid", ctypes.c_byte * 16), ("pid", ctypes.c_ulong)]
+
+
+#: DEVPKEY_Device_BusReportedDeviceDesc {540b947e-8b40-45bc-a8a2-6a0b894cbda2}, 4
+_BUS_REPORTED_DESC = _DevPropKey(
+    (ctypes.c_byte * 16).from_buffer_copy(
+        uuid.UUID("540b947e-8b40-45bc-a8a2-6a0b894cbda2").bytes_le
+    ),
+    4,
+)
+
+
+def bus_reported_name(instance_id: str) -> str:
+    """The product name a device reports about itself, or ``""``.
+
+    ``CM_Get_DevNode_PropertyW`` from the configuration manager — the source
+    ``Get-PnpDeviceProperty`` reads, without starting PowerShell.
+    """
+    try:
+        cfg = ctypes.WinDLL("cfgmgr32")
+    except OSError:
+        return ""
+    node = ctypes.c_ulong()
+    if cfg.CM_Locate_DevNodeW(ctypes.byref(node), ctypes.c_wchar_p(instance_id), 0) != 0:
+        return ""
+    prop_type = ctypes.c_ulong()
+    size = ctypes.c_ulong(512)
+    buffer = ctypes.create_string_buffer(size.value)
+    result = cfg.CM_Get_DevNode_PropertyW(
+        node, ctypes.byref(_BUS_REPORTED_DESC), ctypes.byref(prop_type),
+        buffer, ctypes.byref(size), 0,
+    )
+    if result != 0:
+        return ""
+    return buffer.raw[: size.value].decode("utf-16-le", errors="replace").rstrip("\0")
+
+
+def _reference_id(reference: str) -> str:
+    """``...Win32_PnPEntity.DeviceID="USB\\\\VID_..."`` -> ``USB\\VID_...``."""
+    _, _, quoted = str(reference or "").partition('DeviceID="')
+    return quoted.rstrip('"').replace("\\\\", "\\")
+
+
+def _rows_via_wmi() -> list[dict]:
+    """The rows :data:`_QUERY` produced, read in-process (0.4 s, not 5 s)."""
+    data = wmi.query({
+        "controllers": ("root/cimv2", "SELECT PNPDeviceID, Name FROM Win32_USBController"),
+        "links": ("root/cimv2", "SELECT Antecedent, Dependent FROM Win32_USBControllerDevice"),
+        "inputs": ("root/cimv2", "SELECT PNPDeviceID, Name, PNPClass FROM Win32_PnPEntity "
+                   "WHERE PNPClass='Mouse' OR PNPClass='Keyboard'"),
+    })
+    entities = {str(e.get("PNPDeviceID") or "").upper(): e for e in data["inputs"]}
+    rows: list[dict] = [
+        {"Kind": "controller", "Id": str(c.get("PNPDeviceID") or ""), "Name": str(c.get("Name") or "")}
+        for c in data["controllers"]
+    ]
+    for link in data["links"]:
+        device = _reference_id(link.get("Dependent"))
+        entity = entities.get(device.upper(), {})
+        is_device_node = _PHYSICAL.match(device) is not None
+        rows.append({
+            "Kind": "device",
+            "Id": device,
+            "Controller": _reference_id(link.get("Antecedent")),
+            "Name": str(entity.get("Name") or ""),
+            "Class": str(entity.get("PNPClass") or ""),
+            "Product": bus_reported_name(device) if is_device_node else "",
+        })
+    return rows
+
+
+#: One physical USB device: ``USB\VID_x&PID_y\serial``, no interface suffix.
+_PHYSICAL = re.compile(r"^USB\\VID_[0-9A-F]{4}&PID_[0-9A-F]{4}\\", re.IGNORECASE)
+
+
 def inventory(powershell: PowerShellRunner | None = None) -> UsbInventory:
-    """Read the live inventory. Never raises."""
+    """Read the live inventory. Never raises.
+
+    In-process through WMI and the configuration manager; PowerShell only
+    when a runner is injected or COM is unavailable.
+    """
+    if powershell is None:
+        try:
+            return build(_rows_via_wmi())
+        except wmi.WmiError as exc:
+            _log.info("usb inventory via WMI unavailable: %s", exc.reason)
     runner = powershell or PowerShellRunner(CommandRunner())
     try:
         rows = runner.run_json(_QUERY, timeout_s=90, operation="usb inventory")

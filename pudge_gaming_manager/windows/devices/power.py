@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ...utilities import wmi
 from ...utilities.command_runner import CommandRunner
 from ...utilities.exceptions import PgmError
 from ...utilities.logging_setup import audit_event, get_logger
@@ -58,7 +59,22 @@ class DevicePowerState:
 
 
 def read(powershell: PowerShellRunner | None = None) -> list[DevicePowerState]:
-    """Every device's power-saving flag. Raises :class:`PgmError`."""
+    """Every device's power-saving flag. Raises :class:`PgmError`.
+
+    In-process through WMI (about 0.05 s); PowerShell (about 2 s) only when
+    a runner is injected or COM is unavailable.
+    """
+    if powershell is None:
+        try:
+            rows = wmi.query({"p": (
+                "root/wmi", "SELECT InstanceName, Enable FROM MSPower_DeviceEnable"
+            )})["p"]
+            return [
+                DevicePowerState(str(r.get("InstanceName") or ""), bool(r.get("Enable")))
+                for r in rows if r.get("InstanceName")
+            ]
+        except wmi.WmiError as exc:
+            _log.info("device power via WMI unavailable: %s", exc.reason)
     runner = powershell or PowerShellRunner(CommandRunner())
     rows = runner.run_json(_READ, timeout_s=60, operation="read device power")
     return [

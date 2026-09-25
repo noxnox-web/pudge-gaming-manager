@@ -19,6 +19,7 @@ from __future__ import annotations
 import winreg
 from dataclasses import dataclass
 
+from ...utilities import wmi
 from ...utilities.command_runner import CommandRunner
 from ...utilities.exceptions import PgmError
 from ...utilities.powershell_runner import PowerShellRunner
@@ -52,6 +53,18 @@ class MsiState:
 
 def display_adapters(powershell=None) -> list[tuple[str, str]]:
     """``(name, PnP instance id)`` for each display adapter. Never raises."""
+    if powershell is None:
+        try:
+            rows = wmi.query({"v": (
+                "root/cimv2", "SELECT Name, PNPDeviceID FROM Win32_VideoController"
+            )})["v"]
+            return [
+                (str(r.get("Name") or ""), str(r.get("PNPDeviceID") or ""))
+                for r in rows
+                if str(r.get("PNPDeviceID") or "").upper().startswith("PCI\\")
+            ]
+        except wmi.WmiError:
+            pass
     runner = powershell or PowerShellRunner(CommandRunner())
     try:
         rows = runner.run_json(

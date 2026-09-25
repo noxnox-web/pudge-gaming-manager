@@ -16,7 +16,7 @@ from __future__ import annotations
 import winreg
 from dataclasses import dataclass, field
 
-from ...utilities.command_runner import CommandRunner
+from ...utilities import wmi
 from ...utilities.exceptions import PgmError
 from ...utilities.logging_setup import get_logger
 from ...utilities.powershell_runner import PowerShellRunner
@@ -195,6 +195,67 @@ def build(cim: dict, registry: dict) -> SecurityStatus:
     return SecurityStatus(tuple(findings))
 
 
+#: WMI sources, one query each so a missing namespace (no TPM driver, a
+#: third-party antivirus that has replaced Defender) costs only its own line.
+_WMI_SOURCES = {
+    "vbs": ("root/Microsoft/Windows/DeviceGuard",
+            "SELECT VirtualizationBasedSecurityStatus, SecurityServicesRunning "
+            "FROM Win32_DeviceGuard"),
+    "tpm": ("root/cimv2/Security/MicrosoftTpm",
+            "SELECT IsEnabled_InitialValue, SpecVersion FROM Win32_Tpm"),
+    "defender": ("root/Microsoft/Windows/Defender",
+                 "SELECT AMServiceEnabled, RealTimeProtectionEnabled FROM MSFT_MpComputerStatus"),
+    "antivirus": ("root/SecurityCenter2", "SELECT displayName FROM AntiVirusProduct"),
+    "update": ("root/cimv2", "SELECT StartMode FROM Win32_Service WHERE Name='wuauserv'"),
+}
+
+#: Win32_Service.StartMode spelled the way Get-Service reports StartType.
+_START_MODES = {"auto": "Automatic", "manual": "Manual", "disabled": "Disabled"}
+
+
+def _cim_via_wmi() -> dict:
+    """The same keys :data:`_CIM` produced, read in-process."""
+    cim: dict = {}
+
+    def rows(key: str) -> list[dict] | str:
+        try:
+            return wmi.query({key: _WMI_SOURCES[key]})[key]
+        except wmi.WmiError as exc:
+            return exc.reason or exc.what
+
+    vbs = rows("vbs")
+    if isinstance(vbs, str) or not vbs:
+        cim["VbsError"] = vbs or "нет данных"
+    else:
+        cim["VbsStatus"] = int(vbs[0].get("VirtualizationBasedSecurityStatus") or 0)
+        cim["ServicesRunning"] = ",".join(
+            str(v) for v in (vbs[0].get("SecurityServicesRunning") or ())
+        )
+    tpm = rows("tpm")
+    if isinstance(tpm, str):
+        cim["TpmError"] = tpm
+    elif not tpm:
+        cim["TpmPresent"] = False
+    else:
+        cim["TpmPresent"] = True
+        cim["TpmEnabled"] = bool(tpm[0].get("IsEnabled_InitialValue"))
+        cim["TpmSpec"] = str(tpm[0].get("SpecVersion") or "")
+    defender = rows("defender")
+    if isinstance(defender, str) or not defender:
+        cim["DefenderError"] = defender or "нет данных"
+    else:
+        cim["DefenderService"] = bool(defender[0].get("AMServiceEnabled"))
+        cim["DefenderRealtime"] = bool(defender[0].get("RealTimeProtectionEnabled"))
+    antivirus = rows("antivirus")
+    if not isinstance(antivirus, str):
+        cim["Antivirus"] = ", ".join(str(a.get("displayName") or "") for a in antivirus)
+    update = rows("update")
+    if not isinstance(update, str) and update:
+        mode = str(update[0].get("StartMode") or "")
+        cim["UpdateService"] = _START_MODES.get(mode.lower(), mode)
+    return cim
+
+
 def read(powershell: PowerShellRunner | None = None) -> SecurityStatus:
     """Read the live state. Never raises."""
     registry = {
@@ -203,7 +264,9 @@ def read(powershell: PowerShellRunner | None = None) -> SecurityStatus:
         "update_reboot_pending": _reg_key_exists(_REBOOT_REQUIRED),
         "update_paused_until": _reg_value(_UPDATE_UX, "PauseUpdatesExpiryTime"),
     }
-    runner = powershell or PowerShellRunner(CommandRunner())
+    if powershell is None:
+        return build(_cim_via_wmi(), registry)
+    runner = powershell
     try:
         rows = runner.run_json(_CIM, timeout_s=90, operation="security status")
         cim = rows[0] if rows else {}

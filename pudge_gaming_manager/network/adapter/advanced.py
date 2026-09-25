@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ...utilities import wmi
 from ...utilities.command_runner import CommandRunner
 from ...utilities.logging_setup import audit_event, get_logger
 from ...utilities.powershell_runner import PowerShellRunner
@@ -157,8 +158,88 @@ def _parse(row: dict) -> NetworkAdapter:
     )
 
 
+_NET = "root/StandardCimv2"
+
+#: NdisPhysicalMedium of 802.3 Ethernet, which ``PhysicalMediaType`` shows
+#: as "802.3" in ``Get-NetAdapter``.
+_MEDIUM_802_3 = 14
+
+
+def _link_speed(bps: object) -> str:
+    """``1000000000`` -> ``"1 Gbps"``, as ``Get-NetAdapter`` prints it."""
+    try:
+        value = int(str(bps))
+    except ValueError:
+        return ""
+    for unit, scale in (("Gbps", 10**9), ("Mbps", 10**6), ("Kbps", 10**3)):
+        if value >= scale:
+            return f"{value / scale:g} {unit}"
+    return f"{value} bps" if value else ""
+
+
+def _rows_via_wmi() -> list[dict]:
+    """The rows :data:`_QUERY` produced, read in-process (0.2 s, not 4 s).
+
+    ``Get-NetAdapter -Physical`` is ``ConnectorPresent``; its cmdlets read
+    these same CIM classes. One difference: the CIM class lists only the
+    properties the driver describes (``Get-NetAdapterAdvancedProperty``
+    without ``-AllProperties``). The hidden extras — ``ASPM``, ``InfPath``,
+    ``DriverDesc`` and the like — declare no valid values, so nothing here
+    could change them anyway, and the audit shows none of them.
+    """
+    data = wmi.query({
+        "adapters": (_NET, "SELECT Name, InterfaceDescription, InterfaceOperationalStatus, "
+                     "ConnectorPresent, ReceiveLinkSpeed, NdisPhysicalMedium, PnPDeviceID, "
+                     "DriverVersionString, DriverDate, DriverProvider, "
+                     "DriverMajorNdisVersion, DriverMinorNdisVersion FROM MSFT_NetAdapter"),
+        "properties": (_NET, "SELECT Name, RegistryKeyword, RegistryValue, DisplayName, "
+                       "DisplayValue, ValidRegistryValues "
+                       "FROM MSFT_NetAdapterAdvancedPropertySettingData"),
+    })
+    by_adapter: dict[str, list[dict]] = {}
+    for p in data["properties"]:
+        if not p.get("RegistryKeyword"):
+            continue
+        by_adapter.setdefault(str(p.get("Name") or ""), []).append({
+            "Keyword": str(p.get("RegistryKeyword") or ""),
+            "Display": str(p.get("DisplayName") or ""),
+            "Value": ",".join(str(v) for v in (p.get("RegistryValue") or ())),
+            "DisplayValue": str(p.get("DisplayValue") or ""),
+            "Valid": ",".join(str(v) for v in (p.get("ValidRegistryValues") or ())),
+        })
+    rows = []
+    for a in data["adapters"]:
+        if not a.get("ConnectorPresent"):
+            continue
+        name = str(a.get("Name") or "")
+        major, minor = a.get("DriverMajorNdisVersion"), a.get("DriverMinorNdisVersion")
+        rows.append({
+            "Name": name,
+            "Description": a.get("InterfaceDescription"),
+            "Status": "Up" if a.get("InterfaceOperationalStatus") == 1 else "Disconnected",
+            "LinkSpeed": _link_speed(a.get("ReceiveLinkSpeed")),
+            "Wired": a.get("NdisPhysicalMedium") == _MEDIUM_802_3,
+            "PnpId": a.get("PnPDeviceID"),
+            "DriverVersion": a.get("DriverVersionString"),
+            "DriverDate": a.get("DriverDate"),
+            "DriverProvider": a.get("DriverProvider"),
+            "NdisVersion": f"{major}.{minor}" if major is not None else "",
+            "Properties": by_adapter.get(name, []),
+        })
+    return rows
+
+
 def adapters(powershell: PowerShellRunner | None = None) -> list[NetworkAdapter]:
-    """Physical adapters with their properties. Raises :class:`PgmError`."""
+    """Physical adapters with their properties. Raises :class:`PgmError`.
+
+    In-process through WMI; PowerShell only when a runner is injected or COM
+    is unavailable.
+    """
+    if powershell is None:
+        try:
+            return [_parse(r) for r in _rows_via_wmi()]
+        except wmi.WmiError as exc:
+            _log.info("network adapters via WMI unavailable: %s", exc.reason)
     runner = powershell or PowerShellRunner(CommandRunner())
     rows = runner.run_json(_QUERY, depth=4, timeout_s=90, operation="network adapters")
     return [_parse(r) for r in rows]

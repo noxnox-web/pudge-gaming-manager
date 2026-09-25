@@ -241,15 +241,20 @@ stored but has nothing to compare.
 These are stated rather than worked around. Each is a deliberate scope
 decision, not an oversight.
 
-**GPU telemetry is not available.** v1.0 NVIDIA support is detection-only:
-model, driver version/date and VRAM capacity. No temperature, no utilization,
-no per-game profiles. Writing NVIDIA control-panel settings has no public
-documented API — it requires `NvAPI_DRS_*`, which is thinly documented and
-needs reverse-engineered setting IDs. Deferred rather than guessed.
+**GPU telemetry is NVIDIA-only.** On NVIDIA cards temperature, load, VRAM,
+power, clocks and throttle reasons are read through NVML, NVIDIA's documented
+read-only library — on the dashboard and in the load recording. AMD and Intel
+cards report identity (model, driver) only: no equivalent documented
+interface ships with Windows.
+
+**NVIDIA and AMD control-panel settings are not changed.** Writing them has no
+public documented API — NVIDIA's needs `NvAPI_DRS_*` with reverse-engineered
+setting IDs. The system audit lists them as a manual checklist instead.
 
 **`Win32_VideoController.AdapterRAM` is not used.** It is a 32-bit field and
-reports a 12 GB RTX 3060 as 4 GB. VRAM comes from a one-shot `nvidia-smi`
-query instead; on AMD/Intel GPUs VRAM is reported as unavailable.
+reports a 12 GB RTX 3060 as 4 GB. VRAM comes from NVML, with a one-shot
+`nvidia-smi` query as the fallback when NVML cannot load; on AMD/Intel GPUs
+VRAM is reported as unavailable.
 
 **CPU temperature is not available.** Windows exposes no reliable general CPU
 thermal sensor. `MSAcpi_ThermalZoneTemperature` reports an ACPI zone that is
@@ -290,8 +295,8 @@ found nothing to do: their catalogue, guards and refusal paths are covered
 by tests with a faked inventory, and no real uninstall was performed on any
 machine. USB selective suspend was applied, verified and rolled back for
 real on it;
-hardware GPU scheduling, the network throttle, pointer acceleration and Game
-DVR's per-user switch were already at their target there, so their scan and
+pointer acceleration and Game DVR's per-user switch were already at their
+target there, so their scan and
 rollback paths are covered by tests rather than by observation. AMD
 hardware, laptops and multi-monitor setups are untested.
 

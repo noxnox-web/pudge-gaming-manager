@@ -138,7 +138,7 @@ missing asset fails the build instead of shipping a blank window icon.
 | `privileges` | Token-based elevation detection, per-operation gating |
 | `logging_setup` | `application.log`, `audit.log` (JSON lines), `errors.log` |
 | SQLite layer | 14 tables, migrations, WAL, **append-only audit log enforced by trigger**, written for every applied change, rollback and interrupted change. Refuses a data folder or database created first by another account (ProgramData lets any user create one) |
-| Hardware scanner | CPU, RAM, GPU, storage, displays in a single batched CIM call (~3 s) |
+| Hardware scanner | CPU, RAM, GPU, storage, displays. The inventory is read in-process through WMI (pywin32 COM), 0.23 s; one batched PowerShell CIM call (~3 s) remains as the fallback when COM is unavailable |
 | Display module | `EnumDisplaySettingsExW` mode enumeration, refresh-rate capability detection, `CDS_TEST` dry run |
 | `TweakEngine` | Full lifecycle with all safety invariants |
 | Tweak contract | Rationale required at class-definition time |

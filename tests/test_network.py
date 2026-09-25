@@ -235,6 +235,7 @@ def test_scanner_reports_an_unreadable_configuration() -> None:
     scanner = NetworkScanner(
         _FakePowerShell(error=PgmError("PowerShell failed", "timed out")),
         ping=lambda *a, **k: pytest.fail("must not ping"),
+        use_wmi=False,
     )
     network = scanner.scan()
     assert "timed out" in network.unavailable_reason
@@ -248,7 +249,7 @@ def test_scanner_measures_gateway_and_internet() -> None:
         calls.append((target, canary))
         return PingStats(target, label, 10, (1.0,) * 10)
 
-    network = NetworkScanner(_FakePowerShell(_routing_rows()), ping=fake_ping).scan()
+    network = NetworkScanner(_FakePowerShell(_routing_rows()), ping=fake_ping, use_wmi=False).scan()
     assert sorted(calls) == [("1.1.1.1", True), ("192.168.100.1", False)]
     assert network.gateway_ping is not None and network.internet_ping is not None
 
@@ -257,7 +258,7 @@ def test_scanner_turns_a_ping_failure_into_a_warning() -> None:
     def failing_ping(target, label, *, canary):
         raise OSError(5, "IcmpCreateFile failed")
 
-    network = NetworkScanner(_FakePowerShell(_routing_rows()), ping=failing_ping).scan()
+    network = NetworkScanner(_FakePowerShell(_routing_rows()), ping=failing_ping, use_wmi=False).scan()
     assert network.gateway_ping is None and network.internet_ping is None
     assert len(network.warnings) == 2
 
@@ -266,6 +267,7 @@ def test_scanner_skips_pings_when_disconnected() -> None:
     scanner = NetworkScanner(
         _FakePowerShell(_routing_rows(PathIfIndex=None, Routes=[], Adapters=[])),
         ping=lambda *a, **k: pytest.fail("must not ping"),
+        use_wmi=False,
     )
     assert "network.disconnected" in _ids(scanner.scan())
 
@@ -401,7 +403,7 @@ def test_scanner_does_not_ping_the_internet_without_a_route() -> None:
         return PingStats(target, label, 10, (1.0,) * 10)
 
     rows = [{"PathIfIndex": None, "Routes": [], "Adapters": [ETHERNET_ROW]}]
-    network = NetworkScanner(_FakePowerShell(rows), ping=fake_ping).scan()
+    network = NetworkScanner(_FakePowerShell(rows), ping=fake_ping, use_wmi=False).scan()
     assert calls == []
     assert network.connected and network.internet_ping is None
 
@@ -422,7 +424,7 @@ def test_router_ping_through_a_tunnel_is_not_trusted() -> None:
     def fake_ping(target, label, *, canary):
         return PingStats(target, label, 10, (0.0,) * 10)
 
-    network = NetworkScanner(_FakePowerShell(_rows_with_via(12)), ping=fake_ping).scan()
+    network = NetworkScanner(_FakePowerShell(_rows_with_via(12)), ping=fake_ping, use_wmi=False).scan()
     assert network.gateway_ping is not None
     assert not network.gateway_ping.trustworthy
     assert "другой адаптер" in network.gateway_ping.summary()
@@ -434,7 +436,7 @@ def test_router_ping_over_the_network_card_is_trusted() -> None:
     def fake_ping(target, label, *, canary):
         return PingStats(target, label, 10, (0.0,) * 10)
 
-    network = NetworkScanner(_FakePowerShell(_rows_with_via(7)), ping=fake_ping).scan()
+    network = NetworkScanner(_FakePowerShell(_rows_with_via(7)), ping=fake_ping, use_wmi=False).scan()
     assert network.gateway_ping is not None and network.gateway_ping.trustworthy
 
 

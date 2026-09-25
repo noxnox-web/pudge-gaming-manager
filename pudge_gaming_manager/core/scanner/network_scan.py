@@ -15,7 +15,8 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 
-from ...network.adapter.routing import read_routing
+from ...network.adapter.routing import read_routing, read_routing_wmi
+from ...utilities import wmi
 from ...network.latency import icmp
 from ...network.models import NetworkSnapshot, PingStats
 from ...utilities.command_runner import CommandRunner
@@ -41,14 +42,30 @@ class NetworkScanner:
         self,
         powershell: PowerShellRunner | None = None,
         ping: PingFunction = icmp.ping,
+        *,
+        use_wmi: bool = True,
     ) -> None:
+        """
+        Args:
+            use_wmi: Read routing in-process first (0.2 s against 3.4 s for
+                PowerShell). Tests injecting a fake ``powershell`` turn it off.
+        """
         self.powershell = powershell or PowerShellRunner(CommandRunner())
         self._ping = ping
+        self._use_wmi = use_wmi
+
+    def _routing(self):
+        if self._use_wmi:
+            try:
+                return read_routing_wmi(INTERNET_REFERENCE)
+            except wmi.WmiError as exc:
+                _log.info("in-process routing unavailable, using PowerShell: %s", exc.reason)
+        return read_routing(self.powershell, INTERNET_REFERENCE)
 
     def scan(self) -> NetworkSnapshot:
         """Never raises; what cannot be read is reported as unavailable."""
         try:
-            routing = read_routing(self.powershell, INTERNET_REFERENCE)
+            routing = self._routing()
         except PgmError as exc:
             _log.warning("network routing query failed: %s", exc.what)
             return NetworkSnapshot(

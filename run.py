@@ -24,6 +24,17 @@ def _selftest() -> int:
     from pudge_gaming_manager.app.gui.dashboard import Dashboard
     from pudge_gaming_manager.app.gui.resources import logo_path
 
+    # The scans read WMI through pywin32's COM bindings; a bundle missing
+    # them would fall back to PowerShell silently and lose three seconds.
+    import time
+
+    from pudge_gaming_manager.utilities import wmi
+
+    started = time.perf_counter()
+    rows = wmi.query({"cpu": ("root/cimv2", "SELECT Name FROM Win32_Processor")})
+    assert rows["cpu"], "in-process WMI returned no processor"
+    print(f"WMI in-process OK ({time.perf_counter() - started:.2f}s)")
+
     app = QApplication([])
     window = Dashboard()
     window.show()

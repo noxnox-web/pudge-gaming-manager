@@ -43,7 +43,7 @@ class CountingPowerShell:
 
 def _scanner() -> tuple[HardwareScanner, CountingPowerShell]:
     powershell = CountingPowerShell()
-    return HardwareScanner(powershell=powershell), powershell  # type: ignore[arg-type]
+    return HardwareScanner(powershell=powershell, use_wmi=False), powershell  # type: ignore[arg-type]
 
 
 # -- the inventory is read once ---------------------------------------------
@@ -98,7 +98,7 @@ def test_a_failed_inventory_is_not_cached_as_an_answer() -> None:
             return []
 
     failing = Failing()
-    scanner = HardwareScanner(powershell=failing)  # type: ignore[arg-type]
+    scanner = HardwareScanner(powershell=failing, use_wmi=False)  # type: ignore[arg-type]
 
     scanner.scan()
     scanner.scan(reuse_inventory=True)

@@ -168,9 +168,9 @@ platform plugin, the one club PCs use.
 | Steam club reset | As SteamWiper: removes every game except a built-in keep-list of popular titles (edit `games/steam/default_keep.py`; no profile or config file), with a preview whose checkboxes let the operator rescue any game before deletion; clears `downloading`, `temp`, `shadercache`, `workshop` (whole — including kept games' mods/maps) and `sourcemods` in every library, plus `appcache`, `logs`, `dumps`, `userdata`; **signs every account out** — empties `config` (keeping `config.vdf` and `libraryfolders.vdf`) and deletes each Windows user's saved tokens (`local.vdf`) and Steam web cookies (`htmlcache`). Preview-first with sizes and the number of remembered accounts; everything deleted by handle (junction-swap safe); Steam stopped first |
 | Gaming Score | Transparent, weights configurable, unavailable inputs excluded and renormalised |
 | Issue detection | Findings carry severity, remedy and threshold provenance |
-| Dashboard GUI | PySide6 dark theme; scan, optimize, profile, cleanup and Steam-reset work run on worker threads; score explainer; **ОЧИСТКА ДИСКА / ОЧИСТКА СТИМА / Save as profile… / Compare with profile…**. A write in progress (apply, wipe or cleanup) blocks the window from closing |
+| Dashboard GUI | PySide6 dark theme; scan, optimize, profile, cleanup and Steam-reset work run on worker threads; score explainer; one primary action (**Оптимизировать ПК**) with every other tool grouped beside the metrics (Диагностика / Настройка / Профиль клуба / Очистка). Lime accent from the club logo, text contrast ≥ 4.5:1, a keyboard-only focus ring, fits a 1024 px-wide screen. A write in progress (apply, wipe or cleanup) blocks the window from closing |
 
-**769 tests passing**, plus one opt-in live test that changes and restores
+**774 tests passing**, plus one opt-in live test that changes and restores
 the active power plan (`PGM_LIVE_SYSTEM_TESTS=1`).
 
 ### Running it
@@ -203,7 +203,7 @@ recorded there with the reason.
 Each one self-skips when it is already correct or inapplicable, and the
 preview says so rather than omitting the row.
 
-**`ОЧИСТКА ДИСКА`** is the cleaner on its own. Unlike the cleanup inside
+**`Очистка диска…`** is the cleaner on its own. Unlike the cleanup inside
 `OPTIMIZE PC`, which runs the default categories, this scans *every*
 category plus the Recycle Bin and lets the operator tick what goes. Two
 categories start unticked: the Windows servicing logs, which are wanted when

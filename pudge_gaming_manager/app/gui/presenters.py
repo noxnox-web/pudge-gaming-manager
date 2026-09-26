@@ -19,7 +19,8 @@ from dataclasses import dataclass
 
 from ...core.profiles.golden import ComparisonResult
 from ...core.diagnostics.network import detect_network_issues
-from ...core.types import HardwareSnapshot, NetworkSnapshot
+from ...core.types import HardwareSnapshot, NetworkSnapshot, RiskLevel, ThresholdKind
+from ...utilities.formatting import plural_ru
 
 UNAVAILABLE = "НЕТ ДАННЫХ"  # display value; status codes below stay English
 
@@ -54,11 +55,6 @@ def tidy_model(name: str) -> str:
     for noise in _MODEL_NOISE:
         cleaned = cleaned.replace(noise, "")
     return " ".join(cleaned.split())
-
-
-def elide(text: str, limit: int = 44) -> str:
-    """Shorten from the right so the beginning stays readable."""
-    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
 def cpu_view(snapshot: HardwareSnapshot) -> MetricView:
@@ -134,7 +130,8 @@ def ram_view(snapshot: HardwareSnapshot) -> MetricView:
     return MetricView(
         f"{(ram.used_mb.value or 0) / 1024:.1f} / {ram.total_mb.value / 1024:.1f} ГБ",
         "GOOD" if usage < _RAM_USAGE_WARNING else "WARNING",
-        f"{ram.module_count} модулей · {ram.speed_mhz.display()}",
+        f"{plural_ru(ram.module_count, 'модуль', 'модуля', 'модулей')} · "
+        f"{ram.speed_mhz.display()}",
         _ram_tooltip(ram),
     )
 
@@ -144,7 +141,7 @@ def _ram_tooltip(ram: object) -> str:
     if not modules:
         return ""
     return "\n".join(
-        f"{m.manufacturer} {m.capacity_mb} MB @ {m.speed_mhz} MHz "
+        f"{m.manufacturer} {m.capacity_mb} МБ @ {m.speed_mhz} МГц "
         f"({m.part_number})".strip()
         for m in modules
     )
@@ -250,6 +247,30 @@ def network_view(network: NetworkSnapshot | None) -> MetricView:
         (s for s in ("CRITICAL", "WARNING") if s in severities), "GOOD"
     )
     return MetricView(value, status, " · ".join(parts), "\n".join(tooltip))
+
+
+#: Risk levels as the operator reads them. The enum values stay English:
+#: they are codes shared with the database and the logs.
+RISK_LABELS = {
+    RiskLevel.SAFE: "безопасно",
+    RiskLevel.LOW: "низкий риск",
+    RiskLevel.MEDIUM: "средний риск",
+    RiskLevel.HIGH: "высокий риск",
+    RiskLevel.CRITICAL: "критический риск",
+}
+
+
+def risk_label(risk: RiskLevel) -> str:
+    return RISK_LABELS.get(risk, risk.value)
+
+
+def threshold_label(kind: ThresholdKind | None) -> str:
+    """Where a finding's threshold comes from, for its tooltip."""
+    return {
+        ThresholdKind.VENDOR: "Порог: от производителя",
+        ThresholdKind.HEURISTIC: "Порог: оценка PGM, не норма производителя",
+        ThresholdKind.DERIVED: "Порог: рассчитан от установленного железа",
+    }.get(kind, "") if kind is not None else ""
 
 
 def _link_speed(mbps: int | None) -> str:

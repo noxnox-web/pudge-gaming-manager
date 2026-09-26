@@ -53,14 +53,14 @@ def test_tidying_collapses_whitespace() -> None:
     assert presenters.tidy_model("AMD   Ryzen  5  ") == "AMD Ryzen 5"
 
 
-def test_elide_keeps_the_start_readable() -> None:
-    result = presenters.elide("x" * 60, limit=10)
-    assert len(result) == 10
-    assert result.startswith("xxx") and result.endswith("…")
+def test_module_count_takes_the_russian_plural() -> None:
+    from pudge_gaming_manager.utilities.formatting import plural_ru
 
-
-def test_short_text_is_untouched() -> None:
-    assert presenters.elide("short") == "short"
+    forms = ("модуль", "модуля", "модулей")
+    assert [plural_ru(n, *forms) for n in (1, 2, 4, 5, 11, 21, 22, 112)] == [
+        "1 модуль", "2 модуля", "4 модуля", "5 модулей",
+        "11 модулей", "21 модуль", "22 модуля", "112 модулей",
+    ]
 
 
 # -- the honesty rule ------------------------------------------------------

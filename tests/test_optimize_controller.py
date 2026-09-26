@@ -16,14 +16,10 @@ import threading
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
+from PySide6.QtCore import QEventLoop, QTimer
 
 from pudge_gaming_manager.app.controllers.optimize_controller import OptimizeController
 
-
-@pytest.fixture(scope="module")
-def app() -> QCoreApplication:
-    return QCoreApplication.instance() or QCoreApplication([])
 
 
 def _wait(until) -> None:

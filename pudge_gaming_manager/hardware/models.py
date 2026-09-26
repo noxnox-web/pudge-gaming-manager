@@ -52,7 +52,8 @@ class Reading(Generic[T]):
 
     Args:
         value: The measurement, or ``None`` when unavailable.
-        unit: Display unit, e.g. ``'°C'``, ``'GB'``, ``'Hz'``.
+        unit: Unit code, e.g. ``'°C'``, ``' GB'``, ``' Hz'``; ``display``
+            renders it in the UI's language.
         source: Where it came from, e.g. ``'psutil'``, ``'nvidia-smi'``.
             Shown in diagnostics so an operator can judge its trustworthiness.
         unavailable_reason: Why there is no value. Required when ``value`` is
@@ -73,12 +74,20 @@ class Reading(Generic[T]):
         return cls(value=None, unit=unit, unavailable_reason=reason)
 
     def display(self, *, precision: int = 0) -> str:
-        """Render for the UI. Unavailable values say so plainly."""
+        """Render for the UI, in its language. Unavailable values say so."""
         if self.value is None:
-            return "UNAVAILABLE"
+            return "нет данных"
+        unit = _UNIT_LABELS.get(self.unit.strip(), self.unit.strip())
+        # The unit keeps its own spacing: "°C" and "%" sit on the number.
+        spaced = f" {unit}" if self.unit.startswith(" ") else unit
         if isinstance(self.value, float):
-            return f"{self.value:.{precision}f}{self.unit}"
-        return f"{self.value}{self.unit}"
+            return f"{self.value:.{precision}f}{spaced}"
+        return f"{self.value}{spaced}"
+
+
+#: ``Reading.unit`` is a code the probes share with logs and reports; the UI
+#: is Russian, so the display spells it the Russian way.
+_UNIT_LABELS = {"GB": "ГБ", "MB": "МБ", "MHz": "МГц", "Hz": "Гц", "W": "Вт"}
 
 
 @dataclass(frozen=True, slots=True)

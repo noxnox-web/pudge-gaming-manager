@@ -9,11 +9,9 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import (
     QDialog,
-    QHBoxLayout,
     QInputDialog,
     QMessageBox,
     QPushButton,
-    QVBoxLayout,
 )
 
 from ...core.audit.report import Level
@@ -37,18 +35,12 @@ class SystemActions:
     _settings_dialog: SettingsDialog | None = None
     _history_dialog: HistoryDialog | None = None
 
-    def _build_system_actions(self, layout: QVBoxLayout) -> None:
-        row = QHBoxLayout()
+    def _build_system_actions(self) -> None:
+        """Create this mixin's buttons; the dashboard places them."""
         self._audit_button = self._secondary("Аудит системы…", self._on_audit)
         self._settings_button = self._secondary("Настройки Windows…", self._on_settings)
         self._history_button = self._secondary("История изменений…", self._on_history)
         self._monitor_button = self._secondary("Замер нагрузки…", self._on_monitor)
-        for button in (
-            self._audit_button, self._settings_button,
-            self._history_button, self._monitor_button,
-        ):
-            row.addWidget(button)
-        layout.addLayout(row)
 
     def _secondary(self, text: str, handler) -> QPushButton:
         button = QPushButton(text)

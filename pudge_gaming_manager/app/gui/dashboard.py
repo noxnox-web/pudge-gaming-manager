@@ -1,27 +1,28 @@
 """The main dashboard window.
 
-Layout follows the brief: machine identity and readiness at the top, the
-measured metrics on the left, the score and the single primary action on the
-right, findings below.
+Layout follows the brief: machine identity, scan state and rescan at the top;
+the measured metrics and the grouped tools on the left; the score with the
+single primary action, and the findings, on the right.
 
 Presentation rules this window enforces:
 
 * An unavailable value reads ``UNAVAILABLE`` in grey with its reason in the
   tooltip. It never shows ``0`` and never borrows a warning colour.
 * The score shows its own arithmetic on demand (rule #30).
-* ``OPTIMIZE PC`` is disabled until a scan has actually produced findings,
-  because a button that does nothing teaches an operator to distrust it.
+* ``OPTIMIZE PC`` is the only primary button, and is disabled until a scan
+  has finished: a button that does nothing teaches an operator to distrust it.
+* Status colours mark status. A scan or an apply in progress is not a
+  warning, so it is written in the muted tone, not in amber.
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QFont, QIcon
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
-    QListWidget,
-    QListWidgetItem,
+    QLabel,
     QMainWindow,
     QMessageBox,
     QProgressBar,
@@ -30,7 +31,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ...core.types import Issue
 from ..controllers.optimize_controller import OptimizeController
 from ..controllers.cleanup_controller import CleanupController
 from ..controllers.profile_controller import ProfileController
@@ -121,6 +121,13 @@ class Dashboard(ProfileAndGamesActions, SystemActions, QMainWindow):
 
     def _build_header(self) -> QHBoxLayout:
         row = QHBoxLayout()
+        row.setSpacing(14)
+
+        # The club's own mark, at the height of the two text lines beside it.
+        logo = QLabel()
+        logo.setPixmap(QIcon(logo_path()).pixmap(46, 46))
+        logo.setFixedSize(46, 46)
+        row.addWidget(logo, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         left = QVBoxLayout()
         left.setSpacing(2)
@@ -144,29 +151,44 @@ class Dashboard(ProfileAndGamesActions, SystemActions, QMainWindow):
 
         right = QVBoxLayout()
         right.setSpacing(2)
-        self._state = widgets.label("СКАНИРОВАНИЕ", "ScoreCaption")
+        self._state = widgets.label("", "ScoreCaption")
         self._state.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self._state.setStyleSheet(f"color: {theme.WARNING};")
         self._status = widgets.label("", "ScoreNote")
         self._status.setAlignment(Qt.AlignmentFlag.AlignRight)
         right.addWidget(self._state)
         right.addWidget(self._status)
+        self._set_state("СКАНИРОВАНИЕ", None)
+
+        # Rescan sits with the scan state it refreshes, not among the tools.
+        self._rescan = self._secondary("Пересканировать", self._controller.start)
 
         row.addLayout(left)
         row.addStretch(1)
         row.addLayout(right)
+        row.addWidget(self._rescan, alignment=Qt.AlignmentFlag.AlignVCenter)
         return row
+
+    def _set_state(self, text: str, colour: str | None) -> None:
+        """Header state. ``None`` is work in progress: muted, not a status."""
+        self._state.setText(text)
+        self._state.setStyleSheet(f"color: {colour or theme.TEXT_MUTED};")
 
     def _build_body(self) -> QHBoxLayout:
         row = QHBoxLayout()
         row.setSpacing(18)
-        row.addWidget(self._build_metrics(), stretch=3)
 
-        column = QVBoxLayout()
-        column.setSpacing(18)
-        column.addWidget(self._build_score())
-        column.addWidget(self._build_issues(), stretch=1)
-        row.addLayout(column, stretch=4)
+        left = QVBoxLayout()
+        left.setSpacing(18)
+        left.addWidget(self._build_metrics())
+        left.addWidget(self._build_tools(), stretch=1)
+        row.addLayout(left, stretch=3)
+
+        right = QVBoxLayout()
+        right.setSpacing(18)
+        right.addWidget(self._build_score())
+        self._findings = widgets.FindingsCard()
+        right.addWidget(self._findings, stretch=1)
+        row.addLayout(right, stretch=4)
         return row
 
     def _build_metrics(self) -> QFrame:
@@ -176,7 +198,7 @@ class Dashboard(ProfileAndGamesActions, SystemActions, QMainWindow):
         layout.setSpacing(2)
 
         layout.addWidget(widgets.label("СИСТЕМА", "SectionHeading"))
-        layout.addSpacing(8)
+        layout.addSpacing(6)
 
         self._metrics: dict[str, MetricRow] = {}
         for key, name in (
@@ -191,22 +213,38 @@ class Dashboard(ProfileAndGamesActions, SystemActions, QMainWindow):
             self._metrics[key] = widget
             layout.addWidget(widget)
 
-        layout.addSpacing(10)
+        layout.addSpacing(8)
         divider = QFrame()
         divider.setObjectName("Divider")
         divider.setFrameShape(QFrame.Shape.HLine)
         layout.addWidget(divider)
-        layout.addSpacing(10)
+        layout.addSpacing(8)
 
         self._scan_meta = widgets.label("", "MetricDetail")
         self._scan_meta.setWordWrap(True)
         layout.addWidget(self._scan_meta)
-        layout.addStretch(1)
-
-        # The action buttons are built by the mixin that handles them, so
-        # a button and its handler stay in one file as the set grows.
-        self._build_actions(layout)
         return card
+
+    def _build_tools(self) -> QFrame:
+        """Every secondary action, grouped by what the operator is doing.
+
+        The buttons are created by the mixins that handle them, so a button
+        and its handler stay in one file; the grouping is layout, and
+        layout lives here. Two columns keep the window under 1024 px wide.
+        """
+        self._build_actions()
+        self._build_system_actions()
+        groups = (
+            (
+                ("ДИАГНОСТИКА", (self._audit_button, self._disk_usage, self._monitor_button)),
+                ("ПРОФИЛЬ КЛУБА", (self._save_profile, self._compare_profile)),
+            ),
+            (
+                ("НАСТРОЙКА", (self._settings_button, self._startup, self._history_button)),
+                ("ОЧИСТКА", (self._clean_disk, self._reset_steam)),
+            ),
+        )
+        return widgets.grouped_actions(groups)
 
     def _build_score(self) -> QFrame:
         card = widgets.card()
@@ -234,7 +272,7 @@ class Dashboard(ProfileAndGamesActions, SystemActions, QMainWindow):
         layout.addSpacing(10)
 
         buttons = QHBoxLayout()
-        self._optimize = QPushButton("ОПТИМИЗИРОВАТЬ ПК")
+        self._optimize = QPushButton("Оптимизировать ПК")
         self._optimize.setObjectName("Primary")
         self._optimize.setEnabled(False)
         self._optimize.clicked.connect(self._on_optimize)
@@ -248,39 +286,17 @@ class Dashboard(ProfileAndGamesActions, SystemActions, QMainWindow):
         layout.addLayout(buttons)
         return card
 
-    def _build_issues(self) -> QFrame:
-        card = widgets.card()
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(20, 18, 20, 18)
-        layout.setSpacing(10)
-
-        self._issues_heading = widgets.label("НАХОДКИ", "SectionHeading")
-        layout.addWidget(self._issues_heading)
-
-        self._issues = QListWidget()
-        self._issues.setWordWrap(True)
-        # Findings wrap; a horizontal scrollbar would only ever be an
-        # empty bar across the bottom of the card.
-        self._issues.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        self._issues.setSelectionMode(QListWidget.SelectionMode.NoSelection)
-        layout.addWidget(self._issues, stretch=1)
-        return card
-
     # -- scan lifecycle ----------------------------------------------------
 
     def _on_scan_started(self) -> None:
-        self._state.setText("СКАНИРОВАНИЕ")
-        self._state.setStyleSheet(f"color: {theme.WARNING};")
+        self._set_state("СКАНИРОВАНИЕ", None)
         self._rescan.setEnabled(False)
         self._optimize.setEnabled(False)
         self._explain.setEnabled(False)
         self._set_profile_actions(False)
 
     def _on_scan_failed(self, message: str) -> None:
-        self._state.setText("СБОЙ СКАНИРОВАНИЯ")
-        self._state.setStyleSheet(f"color: {theme.CRITICAL};")
+        self._set_state("СБОЙ СКАНИРОВАНИЯ", theme.CRITICAL)
         self._status.setText("")
         self._rescan.setEnabled(True)
         QMessageBox.warning(self, "Сбой сканирования", message)
@@ -292,15 +308,13 @@ class Dashboard(ProfileAndGamesActions, SystemActions, QMainWindow):
 
         self._populate_metrics(result)
         self._populate_score(result)
-        self._populate_issues(result.issues)
+        self._findings.show_issues(result.issues)
 
         actionable = len(result.actionable_issues)
         if actionable:
-            self._state.setText("ТРЕБУЕТСЯ ДЕЙСТВИЕ")
-            self._state.setStyleSheet(f"color: {theme.WARNING};")
+            self._set_state("ТРЕБУЕТСЯ ДЕЙСТВИЕ", theme.WARNING)
         else:
-            self._state.setText("ГОТОВО")
-            self._state.setStyleSheet(f"color: {theme.GOOD};")
+            self._set_state("ГОТОВО", theme.GOOD)
 
         # Always available once a scan has finished. It used to wait for a
         # fixable *finding* (low disk space, a slow monitor), but the plan
@@ -353,35 +367,6 @@ class Dashboard(ProfileAndGamesActions, SystemActions, QMainWindow):
                 f"Исключено: {', '.join(score.excluded)}."
             )
 
-    def _populate_issues(self, issues: tuple[Issue, ...]) -> None:
-        self._issues.clear()
-        actionable = [i for i in issues if i.status.is_actionable]
-        self._issues_heading.setText(
-            f"НАХОДКИ — ТРЕБУЮТ ВНИМАНИЯ: {len(actionable)}" if actionable
-            else "НАХОДКИ — НЕТ"
-        )
-
-        if not issues:
-            item = QListWidgetItem("Проблем не найдено.")
-            item.setForeground(Qt.GlobalColor.gray)
-            self._issues.addItem(item)
-            return
-
-        for issue in issues:
-            item = QListWidgetItem(f"{issue.title}\n{issue.detail}")
-            item.setToolTip(
-                issue.fix_hint
-                + (
-                    f"\n\nThreshold: {issue.threshold_kind.value.lower()}"
-                    if issue.threshold_kind
-                    else ""
-                )
-            )
-            font = QFont()
-            font.setPointSize(9)
-            item.setFont(font)
-            self._issues.addItem(item)
-
     # -- actions -----------------------------------------------------------
 
     def _on_explain(self) -> None:
@@ -433,8 +418,7 @@ class Dashboard(ProfileAndGamesActions, SystemActions, QMainWindow):
 
         self._optimize.setEnabled(False)
         self._rescan.setEnabled(False)
-        self._state.setText("ОПТИМИЗАЦИЯ")
-        self._state.setStyleSheet(f"color: {theme.WARNING};")
+        self._set_state("ОПТИМИЗАЦИЯ", None)
         self._status.setText("Применение изменений…")
         self._optimizer.start_apply(preview)  # type: ignore[arg-type]
 
@@ -454,8 +438,7 @@ class Dashboard(ProfileAndGamesActions, SystemActions, QMainWindow):
         self._status.setText("")
         self._rescan.setEnabled(True)
         self._optimize.setEnabled(True)
-        self._state.setText("ТРЕБУЕТСЯ ДЕЙСТВИЕ")
-        self._state.setStyleSheet(f"color: {theme.WARNING};")
+        self._set_state("ТРЕБУЕТСЯ ДЕЙСТВИЕ", theme.WARNING)
         QMessageBox.warning(self, "Сбой оптимизации", message)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming

@@ -12,6 +12,7 @@ Enter keypress is not a confirmation.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -20,22 +21,15 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QVBoxLayout,
+    QWidget,
 )
 
 from ...core.optimization.pipeline import OptimizationOutcome, OptimizationPreview
 from ...core.optimization.tweak import BackupScope
-from . import theme
+from . import presenters, theme, widgets
 
 #: Item data role holding a row's index into ``plan.changes``.
 _CHANGE_INDEX = Qt.ItemDataRole.UserRole + 1
-
-_RISK_COLOURS = {
-    "SAFE": theme.GOOD,
-    "LOW": theme.GOOD,
-    "MEDIUM": theme.WARNING,
-    "HIGH": theme.CRITICAL,
-    "CRITICAL": theme.CRITICAL,
-}
 
 
 class PreviewDialog(QDialog):
@@ -68,8 +62,7 @@ class PreviewDialog(QDialog):
         layout.setSpacing(14)
 
         heading = QLabel(
-            f"Запланировано изменений: {preview.change_count} — снимите "
-            "галочку, чтобы пропустить"
+            f"Запланировано изменений: {preview.change_count}"
             if preview.has_changes
             else "Изменения не нужны"
         )
@@ -83,11 +76,11 @@ class PreviewDialog(QDialog):
             if c.tweak.scope is BackupScope.NONE
         ]
         subtitle = QLabel(
-            "Пока ничего не изменено. Каждое обратимое изменение сначала "
-            "сохраняется в резерв и откатывается автоматически, если не подтвердится."
+            "Пока ничего не изменено. Снимите галочку с того, что применять "
+            "не нужно. Обратимые изменения сохраняются в резерв и "
+            "откатываются сами, если не подтвердятся."
             + (
-                f"  Необратимых изменений ниже: {len(irreversible)} — "
-                "каждое помечено."
+                f" Необратимых: {len(irreversible)} — они выделены цветом."
                 if irreversible
                 else ""
             )
@@ -96,39 +89,47 @@ class PreviewDialog(QDialog):
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
+        self._list = _plain_list()
+        # The plan is the decision; the sections below may not squeeze it.
+        self._list.setMinimumHeight(150)
+        layout.addWidget(self._list, stretch=1)
+        self._skipped = _plain_list()
+        # Opened to answer one question, so it never crowds out the plan.
+        self._skipped.setMaximumHeight(200)
+        self._populate()
+
+        # Skipped entries are shown, not hidden: "why didn't it fix X?"
+        # must be answerable from this screen. They sit one click away so
+        # the rows that will actually change something keep the room.
+        if self._skipped.count():
+            layout.addWidget(
+                widgets.Disclosure(
+                    f"Пропущено: {self._skipped.count()} — почему", self._skipped
+                )
+            )
+
         # What the plan was computed for, and what it deliberately leaves
         # alone: the operator should not have to wonder whether HAGS or
         # Defender were touched because they are absent from the list.
-        if snapshot is not None:
-            detected = QLabel(f"Обнаружено: {hardware_line(snapshot)}")
-            detected.setObjectName("ScoreNote")
-            detected.setWordWrap(True)
-            layout.addWidget(detected)
-        untouched = QLabel(
+        details = QWidget()
+        details_layout = QVBoxLayout(details)
+        details_layout.setContentsMargins(0, 0, 0, 0)
+        details_layout.setSpacing(8)
+        notes = [
             "Не меняется здесь: HAGS и игровой режим — только вручную в "
             "«Настройки Windows»; Защитник, Центр обновления, HPET, режим MSI "
-            "и привязка к ядрам — никогда (причины — в «Аудит системы»)."
-        )
-        untouched.setObjectName("ScoreNote")
-        untouched.setWordWrap(True)
-        layout.addWidget(untouched)
-
-        self._list = QListWidget()
-        self._list.setWordWrap(True)
-        self._list.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        self._list.setSelectionMode(QListWidget.SelectionMode.NoSelection)
-        layout.addWidget(self._list, stretch=1)
-        self._populate()
-
-        note = QLabel(
+            "и привязка к ядрам — никогда (причины — в «Аудит системы»).",
             "Применить изменение — значит обновить и проверить настройку. "
-            "Это не измеренный прирост производительности."
-        )
-        note.setObjectName("ScoreNote")
-        note.setWordWrap(True)
-        layout.addWidget(note)
+            "Это не измеренный прирост производительности.",
+        ]
+        if snapshot is not None:
+            notes.insert(0, f"Обнаружено: {hardware_line(snapshot)}")
+        for text in notes:
+            note = QLabel(text)
+            note.setObjectName("ScoreNote")
+            note.setWordWrap(True)
+            details_layout.addWidget(note)
+        layout.addWidget(widgets.Disclosure("Подробности плана", details))
 
         buttons = QDialogButtonBox()
         self._apply = buttons.addButton(
@@ -143,7 +144,7 @@ class PreviewDialog(QDialog):
         blocked = preview.plan.blocked_by_risk
         if blocked and not preview.allow_risk_above_low:
             show_medium = buttons.addButton(
-                f"Показать изменения MEDIUM ({len(blocked)})",
+                f"Показать изменения со средним риском ({len(blocked)})",
                 QDialogButtonBox.ButtonRole.ActionRole,
             )
             show_medium.setObjectName("Secondary")
@@ -186,21 +187,18 @@ class PreviewDialog(QDialog):
         for index, change in enumerate(self._preview.plan.changes):
             if not change.will_apply:
                 continue
-            risk = change.tweak.risk.value
-            # An irreversible change must say so on its own row. Relying on
-            # a general note at the top would let an operator approve a
-            # deletion believing it could be undone.
-            reversibility = (
-                "  ·  НЕОБРАТИМО"
-                if change.tweak.scope is BackupScope.NONE
-                else ""
-            )
+            # An irreversible change must say so on its own row, in words
+            # and in colour. Relying on a general note at the top would let
+            # an operator approve a deletion believing it could be undone.
+            irreversible = change.tweak.scope is BackupScope.NONE
+            tags = [presenters.risk_label(change.tweak.risk)]
+            if irreversible:
+                tags.append("НЕОБРАТИМО")
             item = QListWidgetItem(
-                f"[{risk}]{reversibility}  {change.summary}\n"
-                f"{change.tweak.rationale}"
+                f"{change.summary}\n{' · '.join(tags)} — {change.tweak.rationale}"
             )
             item.setToolTip(change.tweak.description)
-            item.setForeground(Qt.GlobalColor.white)
+            item.setForeground(QColor(theme.WARNING if irreversible else theme.TEXT))
             # Each change can be left out: fixing the display must not force
             # the operator to accept an irreversible cleanup alongside it.
             item.setFlags(
@@ -216,17 +214,20 @@ class PreviewDialog(QDialog):
             )
             item.setData(_CHANGE_INDEX, index)
             self._list.addItem(item)
-            colour = _RISK_COLOURS.get(risk, theme.TEXT)
-            item.setData(Qt.ItemDataRole.UserRole, colour)
 
         for change in self._preview.plan.skipped:
-            # Skipped entries are shown, not hidden: "why didn't it fix X?"
-            # must be answerable from this screen.
-            item = QListWidgetItem(
-                f"[пропущено]  {change.summary}\n{change.skip_reason}"
-            )
-            item.setForeground(Qt.GlobalColor.gray)
-            self._list.addItem(item)
+            item = QListWidgetItem(f"{change.summary}\n{change.skip_reason}")
+            item.setForeground(QColor(theme.TEXT_MUTED))
+            self._skipped.addItem(item)
+
+
+def _plain_list() -> QListWidget:
+    """A wrapping, non-selectable list, as every list in this dialog is."""
+    rows = QListWidget()
+    rows.setWordWrap(True)
+    rows.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    rows.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+    return rows
 
 
 def hardware_line(snapshot) -> str:

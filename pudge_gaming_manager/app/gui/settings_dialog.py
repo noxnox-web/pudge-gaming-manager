@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 from ...core.optimization.tweak import BackupScope
 from ...core.settings.catalog import Tier
 from ...core.settings.service import SettingsView
-from . import theme
+from . import presenters, theme
 
 _KEEP = "__keep__"
 
@@ -176,7 +176,7 @@ class SettingsDialog(QDialog):
             col.addWidget(_small(spec.conflict, theme.WARNING))
         facts = [
             f"Рекомендуется: {state.recommended_label}",
-            f"Риск: {spec.risk.value}",
+            f"Риск: {presenters.risk_label(spec.risk)}",
             f"Действует: {spec.activation.label}",
             f"Windows: {'сборка ' + str(spec.min_build) + '+' if spec.min_build else 'любая'}",
             f"Железо: {spec.hardware}",
@@ -205,7 +205,7 @@ class SettingsDialog(QDialog):
         col.addWidget(_small(tweak.rationale))
         reversible = "старое состояние сохраняется" if tweak.scope is not BackupScope.NONE else "НЕОБРАТИМО"
         col.addWidget(
-            _small(f"Риск: {tweak.risk.value} · Нужны права администратора · Откат: {reversible}", theme.TEXT_FAINT)
+            _small(f"Риск: {presenters.risk_label(tweak.risk)} · Нужны права администратора · Откат: {reversible}", theme.TEXT_FAINT)
         )
         if not change.will_apply and change.skip_reason:
             col.addWidget(_small(f"Сейчас не применяется: {change.skip_reason}", theme.TEXT_FAINT))
@@ -264,7 +264,9 @@ class PlanConfirmDialog(QDialog):
         listing.setSelectionMode(QListWidget.SelectionMode.NoSelection)
         for change in applicable:
             restart = " · после перезагрузки" if getattr(change.tweak, "restart_required", False) else ""
-            item = QListWidgetItem(f"[{change.tweak.risk.value}]{restart}  {change.summary}")
+            item = QListWidgetItem(
+                f"{change.summary}\n{presenters.risk_label(change.tweak.risk)}{restart}"
+            )
             listing.addItem(item)
         for change in plan.skipped:
             item = QListWidgetItem(f"[пропущено]  {change.summary}\n{change.skip_reason}")

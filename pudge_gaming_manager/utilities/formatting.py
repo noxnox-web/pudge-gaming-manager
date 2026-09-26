@@ -18,4 +18,18 @@ def format_size(num_bytes: int) -> str:
     return f"{size:.1f} ТБ"
 
 
-__all__ = ["format_size"]
+def plural_ru(count: int, one: str, few: str, many: str) -> str:
+    """``count`` with the Russian noun form it takes: 1 модуль, 2 модуля, 5 модулей."""
+    tail = count % 100
+    if 11 <= tail <= 14:
+        form = many
+    elif tail % 10 == 1:
+        form = one
+    elif 2 <= tail % 10 <= 4:
+        form = few
+    else:
+        form = many
+    return f"{count} {form}"
+
+
+__all__ = ["format_size", "plural_ru"]

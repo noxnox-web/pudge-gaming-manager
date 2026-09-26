@@ -16,12 +16,20 @@ SURFACE_RAISED = "#1c2230"
 BORDER = "#2a313c"
 
 TEXT = "#e6edf3"
-TEXT_MUTED = "#8b949e"
-TEXT_FAINT = "#6e7681"
+TEXT_MUTED = "#9da7b3"
+TEXT_FAINT = "#848d97"
+"""The faintest text still reads at 4.5:1 on every surface it sits on
+(SURFACE_RAISED is the darkest case, 4.7:1). Anything fainter is
+decoration, and this interface has none."""
 
-ACCENT = "#3b82f6"
-ACCENT_HOVER = "#60a5fa"
-ACCENT_PRESSED = "#2563eb"
+ACCENT = "#96c12a"
+"""The lime of the club logo. It marks the one primary action, keyboard
+focus and selection — never a status, which keeps GOOD green unambiguous."""
+ACCENT_HOVER = "#a6d13a"
+ACCENT_PRESSED = "#86ad22"
+ACCENT_TEXT = "#0e1116"
+"""Text on an accent fill: dark, as the logo's lettering is (9:1). White
+on this lime would read at under 2:1."""
 
 GOOD = "#3fb950"
 WARNING = "#d29922"
@@ -114,18 +122,18 @@ def stylesheet() -> str:
 
     QPushButton#Primary {{
         background-color: {ACCENT};
-        color: #ffffff;
-        border: none;
+        color: {ACCENT_TEXT};
+        border: 2px solid {ACCENT};
         border-radius: 8px;
-        padding: 14px 28px;
+        padding: 12px 26px;
         font-size: 15px;
         font-weight: 700;
-        letter-spacing: 0.6px;
     }}
-    QPushButton#Primary:hover    {{ background-color: {ACCENT_HOVER}; }}
-    QPushButton#Primary:pressed  {{ background-color: {ACCENT_PRESSED}; }}
+    QPushButton#Primary:hover    {{ background-color: {ACCENT_HOVER}; border-color: {ACCENT_HOVER}; }}
+    QPushButton#Primary:pressed  {{ background-color: {ACCENT_PRESSED}; border-color: {ACCENT_PRESSED}; }}
     QPushButton#Primary:disabled {{
         background-color: {SURFACE_RAISED};
+        border-color: {SURFACE_RAISED};
         color: {TEXT_FAINT};
     }}
 
@@ -134,11 +142,57 @@ def stylesheet() -> str:
         color: {TEXT};
         border: 1px solid {BORDER};
         border-radius: 8px;
-        padding: 10px 18px;
+        padding: 7px 14px;
         font-size: 13px;
     }}
-    QPushButton#Secondary:hover    {{ border-color: {ACCENT}; color: {ACCENT_HOVER}; }}
+    QPushButton#Secondary:hover    {{ background-color: {SURFACE_RAISED}; border-color: {TEXT_FAINT}; }}
+    QPushButton#Secondary:pressed  {{ background-color: {BORDER}; }}
     QPushButton#Secondary:disabled {{ color: {TEXT_FAINT}; border-color: {BORDER}; }}
+
+    /* Keyboard focus. Qt stops drawing its own focus rectangle once a
+       button's border is styled, so without these a Tab press moves focus
+       somewhere invisible. The property is set only for focus that arrived
+       from the keyboard (see widgets.KeyboardFocusRing), so a mouse click
+       does not leave a ring behind. Border width is traded against padding
+       so the ring never shifts the layout. */
+    QPushButton#Primary[kbfocus="true"] {{ border-color: {TEXT}; }}
+    QPushButton#Secondary[kbfocus="true"] {{
+        border: 2px solid {ACCENT};
+        padding: 6px 13px;
+    }}
+    QCheckBox {{ border: 1px solid transparent; border-radius: 4px; padding: 2px; }}
+    QCheckBox[kbfocus="true"],
+    QToolButton#Disclosure[kbfocus="true"] {{ border: 1px solid {ACCENT}; }}
+    QListWidget[kbfocus="true"],
+    QScrollArea[kbfocus="true"] {{ border: 1px solid {ACCENT}; border-radius: 8px; }}
+    QComboBox[kbfocus="true"] {{ border: 1px solid {ACCENT}; }}
+
+    /* A collapsible section header: reads as a link-weight control, not as
+       a third button style. */
+    QToolButton#Disclosure {{
+        background: transparent;
+        color: {TEXT_MUTED};
+        border: 1px solid transparent;
+        border-radius: 4px;
+        padding: 2px 4px;
+        font-size: 12px;
+    }}
+    QToolButton#Disclosure:hover {{ color: {TEXT}; }}
+
+    /* One finding: the title carries the weight, the explanation sits
+       under it in the muted tone. */
+    QFrame#Finding {{
+        background-color: {SURFACE_RAISED};
+        border: 1px solid {BORDER};
+        border-radius: 8px;
+    }}
+    QLabel#FindingTitle  {{ font-size: 14px; font-weight: 600; }}
+    QLabel#FindingDetail {{ color: {TEXT_MUTED}; font-size: 13px; }}
+    QLabel#FindingEmpty  {{ color: {TEXT_MUTED}; font-size: 13px; }}
+    QScrollArea#Findings, QWidget#FindingsBody {{
+        background: transparent;
+        border: 1px solid transparent;
+    }}
 
     QListWidget {{
         background-color: transparent;
@@ -212,6 +266,7 @@ def stylesheet() -> str:
         background-color: {SURFACE_RAISED};
         border: 1px solid {BORDER};
         selection-background-color: {ACCENT};
+        selection-color: {ACCENT_TEXT};
     }}
 
     QToolTip {{

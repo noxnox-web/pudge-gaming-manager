@@ -7,6 +7,7 @@ import sys
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
+from .. import __version__
 from ..utilities.logging_setup import setup_logging
 from .gui.dashboard import Dashboard
 from .gui.resources import logo_path
@@ -19,7 +20,7 @@ def main(argv: list[str] | None = None) -> int:
 
     app = QApplication(argv if argv is not None else sys.argv)
     app.setApplicationName("Pudge Cleaner")
-    app.setApplicationVersion("1.0.0-dev")
+    app.setApplicationVersion(__version__)
     app.setWindowIcon(QIcon(logo_path()))
     # Parented to the app so it lives as long as the event loop.
     app.installEventFilter(KeyboardFocusRing(app))

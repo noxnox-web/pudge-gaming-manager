@@ -28,12 +28,15 @@ _log = get_logger(__name__)
 
 def candidates(
     root: pathlib.Path, category: CleanupCategory
-) -> Iterator[tuple[pathlib.Path, os.stat_result, bool]]:
-    """Yield ``(path, stat, is_link)`` for files matching ``category``.
+) -> Iterator[tuple[pathlib.Path, os.stat_result]]:
+    """Yield ``(path, stat)`` for files matching ``category``.
 
-    Directory links are never descended into. A link that is itself a
-    candidate file is still yielded, flagged, so the caller can apply the
-    expensive resolving containment check to it and only to it.
+    Links are neither descended into nor yielded. A symlink or junction is
+    zero bytes of its own, so there is nothing to reclaim by deleting it;
+    and the delete-time gate refuses a reparse point by design, so a yielded
+    link could only ever come back as a "refused - possible swap" warning.
+    That is what happened on a real run: pytest leaves ``...current`` links
+    in Temp, and one cleanup logged 564 false alarms about them.
     """
     patterns = category.patterns
     # The walk prunes protected directory names as it goes, so it must
@@ -49,22 +52,18 @@ def candidates(
             with os.scandir(current) as entries:
                 for entry in entries:
                     try:
-                        is_link = entry.is_symlink() or entry_is_junction(entry)
+                        if entry.is_symlink() or entry_is_junction(entry):
+                            continue
                         if entry.is_dir(follow_symlinks=False):
                             if (
                                 category.recursive
-                                and not is_link
                                 and not component_is_protected(entry.name, allowed)
                             ):
                                 stack.append(pathlib.Path(entry.path))
                             continue
                         if not matches(entry.name, patterns):
                             continue
-                        yield (
-                            pathlib.Path(entry.path),
-                            entry.stat(follow_symlinks=False),
-                            is_link,
-                        )
+                        yield pathlib.Path(entry.path), entry.stat(follow_symlinks=False)
                     except OSError:
                         continue
         except OSError as exc:

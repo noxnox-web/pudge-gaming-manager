@@ -143,8 +143,8 @@ class CleanupEngine:
                 syscall per file. Omitted at deletion time, where the point
                 is precisely to re-read the current state.
             resolve_containment: Use the resolving containment check. The
-                scan passes ``False`` for non-link entries it walked itself
-                and handles links separately; deletion always leaves it on.
+                scan passes ``False``: its walk never yields or enters a
+                link. Deletion always leaves it on.
         """
         contained = (
             self._contained(path, root)
@@ -225,19 +225,13 @@ class CleanupEngine:
 
         result.roots_scanned = roots
         for root in roots:
-            resolved_root = _resolve(root)
-            for path, stat, is_link in walk.candidates(root, category):
-                # Containment only needs the expensive resolve() when the
-                # entry is itself a link. Everything else came from a walk
-                # that already pruned links, so a lexical check is sound —
-                # and resolve() per file is what made a scan take a minute.
-                if is_link and not self._contained(path, resolved_root):
-                    result.skipped_protected += 1
-                    continue
-
+            for path, stat in walk.candidates(root, category):
+                # The walk neither descends into nor yields links, so a
+                # lexical containment check is sound here - and resolve()
+                # per file is what once made a scan take a minute.
                 approved, reason = self._approves(
                     path, root, category, now, stat=stat,
-                    resolve_containment=is_link,
+                    resolve_containment=False,
                 )
                 if approved:
                     result.items.append(
@@ -407,25 +401,48 @@ class CleanupEngine:
         return True, ""
 
     def _remove_empty_dirs(self, roots: list[pathlib.Path]) -> None:
-        """Remove directories left empty. The roots themselves are kept."""
+        """Remove directories left empty. The roots themselves are kept.
+
+        A hand-written bottom-up walk that never enters a link. It used
+        ``os.walk(followlinks=False)``, which on Windows still descends
+        into junctions: nothing outside the root was removed - the resolve
+        check below refused it - but a junction in Temp pointing at a large
+        tree made every cleanup walk that whole tree for nothing.
+        """
         for root in roots:
-            resolved_root = _resolve(root)
-            for dirpath, dirnames, filenames in os.walk(
-                root, topdown=False, followlinks=False
+            self._prune(root, _resolve(root))
+
+    def _prune(self, directory: pathlib.Path, resolved_root: pathlib.Path) -> bool:
+        """Remove empty directories under ``directory``; True if it is now empty."""
+        try:
+            entries = list(os.scandir(directory))
+        except OSError:
+            return False
+        empty = True
+        for entry in entries:
+            try:
+                is_link = entry.is_symlink() or walk.entry_is_junction(entry)
+                is_dir = not is_link and entry.is_dir(follow_symlinks=False)
+            except OSError:
+                is_dir = False
+            if not is_dir:
+                empty = False
+                continue
+            child = pathlib.Path(entry.path)
+            # Same pre-resolved comparison as the delete gate: one resolve
+            # for the directory, none for the root.
+            if (
+                not self._prune(child, resolved_root)
+                or self.is_protected(child)
+                or not within(_resolve(child), resolved_root)
             ):
-                current = pathlib.Path(dirpath)
-                if current == root or dirnames or filenames:
-                    continue
-                # Same pre-resolved comparison as the delete gate: one
-                # resolve for the directory, none for the root.
-                if self.is_protected(current) or not within(
-                    _resolve(current), resolved_root
-                ):
-                    continue
-                try:
-                    current.rmdir()
-                except OSError:
-                    pass  # not empty any more, or locked
+                empty = False
+                continue
+            try:
+                child.rmdir()
+            except OSError:
+                empty = False  # not empty any more, or locked
+        return empty
 
 
 def _resolve(path: pathlib.Path) -> pathlib.Path:

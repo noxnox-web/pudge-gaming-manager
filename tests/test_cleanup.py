@@ -543,3 +543,51 @@ def test_delete_tree_clears_a_read_only_file(tmp_path: pathlib.Path) -> None:
     os.chmod(tree / "locked.bin", _stat.S_IREAD)
     delete_tree(tree)
     assert not tree.exists()
+
+
+
+@windows_only
+def test_links_in_temp_are_neither_candidates_nor_refusals(tmp_path: pathlib.Path) -> None:
+    """pytest leaves ``...current`` directory links in Temp. Yielding them
+    as candidates made every cleanup report hundreds of "refused - possible
+    swap" items on a machine where nothing was wrong."""
+    import subprocess
+
+    sandbox = tmp_path / "sandbox"
+    target = tmp_path / "target"
+    _write(sandbox / "real.tmp")
+    _write(target / "keep.dat")
+    subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(sandbox / "run-current"), str(target)],
+        check=True, capture_output=True,
+    )
+
+    engine = CleanupEngine((_category(sandbox),))
+    report = engine.scan()
+    names = [i.path.name for i in report.categories[0].items]
+    result = engine.clean(report)
+
+    assert names == ["real.tmp"]
+    assert result.refused_files == 0
+    assert (target / "keep.dat").exists()
+
+
+@windows_only
+def test_empty_folder_pruning_does_not_walk_into_a_junction(tmp_path: pathlib.Path) -> None:
+    import subprocess
+
+    sandbox = tmp_path / "sandbox"
+    elsewhere = tmp_path / "elsewhere"
+    (elsewhere / "empty-but-not-ours").mkdir(parents=True)
+    _write(sandbox / "nested" / "old.tmp")
+    subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(sandbox / "link"), str(elsewhere)],
+        check=True, capture_output=True,
+    )
+
+    engine = CleanupEngine((_category(sandbox),))
+    engine.clean(engine.scan())
+
+    assert not (sandbox / "nested").exists()  # emptied by the clean, then pruned
+    assert (sandbox / "link").exists()  # a link is not an empty folder of ours
+    assert (elsewhere / "empty-but-not-ours").exists()

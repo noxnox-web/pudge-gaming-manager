@@ -302,8 +302,13 @@ class Dashboard(ProfileAndGamesActions, SystemActions, QMainWindow):
             self._state.setText("ГОТОВО")
             self._state.setStyleSheet(f"color: {theme.GOOD};")
 
-        fixable = [i for i in result.actionable_issues if i.fixable]
-        self._optimize.setEnabled(bool(fixable))
+        # Always available once a scan has finished. It used to wait for a
+        # fixable *finding* (low disk space, a slow monitor), but the plan
+        # checks far more than the findings — temp files, the power scheme,
+        # USB suspend, pointer acceleration, Game DVR, the settings
+        # catalogue, apps — so a PC with no findings still had work for it
+        # and no way to reach it. The preview says when nothing is needed.
+        self._optimize.setEnabled(True)
         self._explain.setEnabled(True)
         self._set_profile_actions(True)
 
